@@ -2,15 +2,9 @@
 Classes and Functions for actual data processing.
 """
 
-# imports
-
-import numpy as np
 import scipy.stats
-
 from .math_tools import *
 from .shell_tools import *
-
-# classes
 
 
 class DataObj:
@@ -317,13 +311,6 @@ class DataObj:
 
             else:
                 msg_warning('Function build_shifted works only for timecourses. What follows is probably meaningless.')
-
-
-
-
-
-
-# functions
 
 
 def compute_delays(reference, probe, shifts_option):

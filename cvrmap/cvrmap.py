@@ -10,11 +10,8 @@ Author: Antonin Rovai
 Created: May 2022
 """
 
-# imports
 import sys
-
-from .utils import *  # custom utilities
-
+from .utils import *
 
 def main():
     """

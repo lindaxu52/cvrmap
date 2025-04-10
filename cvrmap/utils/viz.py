@@ -2,12 +2,6 @@
 Visualization utilities
 """
 
-# imports
-
-# classes
-
-# functions
-
 def gather_figures(objs):
     """
     Create fig from several DataObj of 'timecourse' type by superimposing their individual plots

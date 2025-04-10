@@ -2,8 +2,6 @@
 Preferences for the shell prints: colors, messaging and progress bars
 """
 
-# classes
-
 class bcolors:
     """
         Convenient colors for terminal prints
@@ -24,7 +22,6 @@ class bcolors:
     INFO = BOLD + GREEN
     WARNING = BOLD + YELLOW
 
-# functions
 
 def msg_info(msg):
     """

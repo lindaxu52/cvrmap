@@ -85,7 +85,6 @@ def get_bidslayout(args):
     return bidslayout(args.bids_dir, validate=not args.skip_bids_validator)
 
 
-
 def get_subjects_to_analyze(args, layout):
     """
         Generate list of subjects to analyze given the options and available subjects
@@ -605,6 +604,7 @@ def get_report_config():
     with importlib.resources.path('cvrmap.data', 'reports_config.yml') as file_p:
         return file_p
 
+
 def save_figs(results, outputs, mask):
     """
         Generate and saves cvr and delay figures.
@@ -802,6 +802,7 @@ def plotly_formatted_svg_write_image(fig, output_path):
         file.write(formatted_bytes)
 
     return 0
+
 
 def get_processed_subjects(layout):
     """
