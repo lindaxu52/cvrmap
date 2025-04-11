@@ -20,6 +20,7 @@ def test_arguments_manager():
         assert args.output_dir == 'some_derivatives_dir'
         assert args.analysis_level == 'participant'
 
+
 def test_get_subjects_to_analyze():
     """
         Function to test get_subjects_to_analyze()
@@ -35,6 +36,7 @@ def test_get_subjects_to_analyze():
     with pytest.raises(SystemExit) as e:
         get_subjects_to_analyze(args, layout)
     assert e.type == SystemExit
+
 
 def test_get_fmriprep_dir():
     """
@@ -52,6 +54,7 @@ def test_get_fmriprep_dir():
     with pytest.raises(SystemExit) as e:
         get_fmriprep_dir(args)
     assert e.type == SystemExit
+
 
 def test_get_task():
     """
@@ -135,8 +138,10 @@ def test_set_flags():
     from ..io_tools import set_flags
     from argparse import Namespace
 
-    args = Namespace(**{'sloppy': 'value1', 'overwrite': 'value2',
-                        'use_aroma': 'value3', 'vesselsignal': 'value4',
+    args = Namespace(**{'sloppy': 'value1',
+                        'overwrite': 'value2',
+                        'use_aroma': 'value3',
+                        'vesselsignal': 'value4',
                         'globalsignal': 'value5'
                         })
 
@@ -165,6 +170,7 @@ def test_setup_subject_output_paths():
                         })
     output_dir = '/tmp/tmp_pytest'
     subject_label = 'dummylabel'
+    task = 'dummyTask'
     space = 'dummyspace'
     res = None
     custom_label = 'dummycustomlabel'
@@ -172,7 +178,7 @@ def test_setup_subject_output_paths():
     if os.path.isdir(output_dir):
         rmtree(output_dir)
 
-    outputs = setup_subject_output_paths(output_dir, subject_label, space, res, args, custom_label)
+    outputs = setup_subject_output_paths(output_dir, subject_label, space, res, task, args, custom_label)
 
     assert isinstance(outputs, dict)
     assert os.path.isdir(output_dir)

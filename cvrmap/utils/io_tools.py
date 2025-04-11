@@ -271,6 +271,7 @@ def set_flags(args):
     flags['ica_aroma'] = args.use_aroma
     flags['vesselsignal'] = args.vesselsignal
     flags['globalsignal'] = args.globalsignal
+    flags['overwrite'] = args.overwrite
 
     if flags['ica_aroma']:
         from .shell_tools import msg_info
