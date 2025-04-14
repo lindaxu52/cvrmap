@@ -60,6 +60,10 @@ def arguments_manager(version):
                                                'surrogate for CO2 partial pressure. '
                                                'Results in measures of relative CVR.',
                         action='store_true')
+    parser.add_argument('--superiorsagittalsinus', help='If set, will extract BOLD signal from the superior sagittal sinus as a '
+                                               'surrogate for CO2 partial pressure. '
+                                               'Results in measures of relative CVR.',
+                        action='store_true')
     parser.add_argument('--globalsignal',
                         help='If set, will extract global BOLD signal as a surrogate for CO2 partial pressure. '
                              'Results in measures of relative CVR.',
@@ -271,7 +275,7 @@ def set_flags(args):
     flags['ica_aroma'] = args.use_aroma
     flags['vesselsignal'] = args.vesselsignal
     flags['globalsignal'] = args.globalsignal
-    flags['overwrite'] = args.overwrite
+    flags['superiorsagittalsinus'] = args.superiorsagittalsinus
 
     if flags['ica_aroma']:
         from .shell_tools import msg_info
@@ -344,6 +348,10 @@ def setup_subject_output_paths(output_dir, subject_label, space, res, task, args
         label = '_label-globalsignal'
         suffix = '_rcvr'
 
+    if args.superiorsagittalsinus:
+        label = '_label-superiorsagittalsinus'
+        suffix = '_rcvr'
+
     if res is None:
         prefix = subject_prefix + "_space-" + space + '_task-' + task + label + denoise_label + custom_label
     else:
@@ -371,12 +379,14 @@ def setup_subject_output_paths(output_dir, subject_label, space, res, task, args
     outputs['etco2'] = os.path.join(extras_dir, 'sub-' + subject_label + '_desc-etco2_timecourse')
     outputs['vesselsignal'] = os.path.join(extras_dir, 'sub-' + subject_label + '_desc-vesselsignal_timecourse')
     outputs['globalsignal'] = os.path.join(extras_dir, 'sub-' + subject_label + '_desc-globalsignal_timecourse')
+    outputs['superiorsagittalsinus'] = os.path.join(extras_dir, 'sub-' + subject_label + '_desc-superiorsagittalsinus_timecourse')
 
     # figures (for the report)
     outputs['breathing_figure'] = os.path.join(figures_dir, 'sub-' + subject_label + '_breathing' + '.svg')
     outputs['boldmean_figure'] = os.path.join(figures_dir, 'sub-' + subject_label + '_boldmean' + '.svg')
     outputs['vesselsignal_figure'] = os.path.join(figures_dir, 'sub-' + subject_label + '_vesselsignal' + '.svg')
     outputs['globalsignal_figure'] = os.path.join(figures_dir, 'sub-' + subject_label + '_globalsignal' + '.svg')
+    outputs['superiorsagittalsinus_figure'] = os.path.join(figures_dir, 'sub-' + subject_label + '_superiorsagittalsinus' + '.svg')
 
     if res is None:
         outputs['cvr_figure'] = os.path.join(figures_dir, 'sub-' + subject_label + "_space-" + space + denoise_label
@@ -387,6 +397,8 @@ def setup_subject_output_paths(output_dir, subject_label, space, res, task, args
                                              + custom_label + '_vesselmask' + figures_extension)
         outputs['globalmask_figure'] = os.path.join(figures_dir, 'sub-' + subject_label + "_space-" + space
                                              + custom_label + '_globalmask' + figures_extension)
+        outputs['superiorsagittalsinusmask_figure'] = os.path.join(figures_dir, 'sub-' + subject_label + "_space-" + space
+                                             + custom_label + '_superiorsagittalsinusmask' + figures_extension)
     else:
         outputs['cvr_figure'] = os.path.join(figures_dir, 'sub-' + subject_label + "_space-" + space + '_res-' + res + denoise_label
                                              + custom_label + suffix + figures_extension)
@@ -396,6 +408,8 @@ def setup_subject_output_paths(output_dir, subject_label, space, res, task, args
                                                     + custom_label + '_vesselmask' + figures_extension)
         outputs['globalmask_figure'] = os.path.join(figures_dir, 'sub-' + subject_label + "_space-" + space + '_res-' + res
                                                     + custom_label + '_globalmask' + figures_extension)
+        outputs['superiorsagittalsinusmask_figure'] = os.path.join(figures_dir, 'sub-' + subject_label + "_space-" + space + '_res-' + res
+                                                    + custom_label + '_superiorsagittalsinusmask' + figures_extension)
 
     # html reportlets
     outputs['summary_reportlet'] = os.path.join(figures_dir, 'sub-' + subject_label + '_summary' + '.html')
@@ -533,6 +547,16 @@ def get_vesselmask(preproc, threshold):
         _vesselatlas = resample_to_img(source_img=vesselatlas, target_img=preproc.path)
         vessel_mask = binarize_img(img=_vesselatlas, threshold=threshold)
     return vessel_mask
+
+
+def get_superiorsagittalsinusmask(preproc):
+    from nilearn.image import binarize_img, resample_to_img
+
+    from nilearn.image import load_img
+    import importlib.resources
+    superiorsagittalsinus_path = load_img(importlib.resources.files('cvrmap.data') / 'SuperiorSagittalSinus_mask.nii.gz')
+    superiorsagittalsinus_mask = resample_to_img(source_img=superiorsagittalsinus_path, target_img=preproc.path)
+    return binarize_img(img=superiorsagittalsinus_mask, threshold="99%")
 
 
 def get_preproc(basic_filter, layout):

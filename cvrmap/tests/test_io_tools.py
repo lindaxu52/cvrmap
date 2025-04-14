@@ -139,7 +139,6 @@ def test_set_flags():
     from argparse import Namespace
 
     args = Namespace(**{'sloppy': 'value1',
-                        'overwrite': 'value2',
                         'use_aroma': 'value3',
                         'vesselsignal': 'value4',
                         'globalsignal': 'value5'
@@ -148,7 +147,6 @@ def test_set_flags():
     flags = set_flags(args)
 
     assert flags['sloppy'] == args.sloppy
-    assert flags['overwrite'] == args.overwrite
     assert flags['ica_aroma'] == args.use_aroma
     assert flags['vesselsignal'] == args.vesselsignal
     assert flags['globalsignal'] == args.globalsignal
@@ -164,8 +162,9 @@ def test_setup_subject_output_paths():
     import os
     from shutil import rmtree
 
-    args = Namespace(**{'sloppy': 'value1', 'overwrite': 'value2',
-                        'use_aroma': 'value3', 'vesselsignal': 'value4',
+    args = Namespace(**{'sloppy': 'value1',
+                        'use_aroma': 'value3',
+                        'vesselsignal': 'value4',
                         'globalsignal': 'value5'
                         })
     output_dir = '/tmp/tmp_pytest'
