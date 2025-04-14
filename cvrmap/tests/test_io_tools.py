@@ -9,7 +9,7 @@ def test_arguments_manager():
         Function to test arguments_manager()
 
     """
-    from ..io_tools import arguments_manager
+    from cvrmap.utils.io_tools import arguments_manager 
     import sys
     from unittest.mock import patch
 
@@ -20,28 +20,30 @@ def test_arguments_manager():
         assert args.output_dir == 'some_derivatives_dir'
         assert args.analysis_level == 'participant'
 
+
 def test_get_subjects_to_analyze():
     """
         Function to test get_subjects_to_analyze()
 
     """
-    from ..io_tools import get_subjects_to_analyze
+    from cvrmap.utils.io_tools import get_subjects_to_analyze
     from bids import BIDSLayout
     from argparse import Namespace
     import pytest
-    dummy_data_path = 'cvrmap/utils/tests/data'
+    dummy_data_path = 'cvrmap/tests/data'
     layout = BIDSLayout(dummy_data_path, validate=False)
     args = Namespace(**{'participant_label': '007'})
     with pytest.raises(SystemExit) as e:
         get_subjects_to_analyze(args, layout)
     assert e.type == SystemExit
 
+
 def test_get_fmriprep_dir():
     """
         Function to test get_fmriprep_dir()
 
     """
-    from ..io_tools import get_fmriprep_dir
+    from cvrmap.utils.io_tools import get_fmriprep_dir
     from argparse import Namespace
     import pytest
 
@@ -53,16 +55,17 @@ def test_get_fmriprep_dir():
         get_fmriprep_dir(args)
     assert e.type == SystemExit
 
+
 def test_get_task():
     """
         Function to test get_task()
 
     """
-    from ..io_tools import get_task
+    from cvrmap.utils.io_tools import get_task
     from bids import BIDSLayout
     from argparse import Namespace
     import pytest
-    dummy_data_path = 'cvrmap/utils/tests/data'
+    dummy_data_path = 'cvrmap/tests/data'
     layout = BIDSLayout(dummy_data_path, validate=False)
     args = Namespace(**{'task': 'some_task'})
     with pytest.raises(SystemExit) as e:
@@ -75,7 +78,7 @@ def test_get_custom_label():
         Function to test get_custom_label()
 
     """
-    from ..io_tools import get_custom_label
+    from cvrmap.utils.io_tools import get_custom_label
     from argparse import Namespace
 
     args = Namespace(**{'label': 'crazyname'})
@@ -92,7 +95,7 @@ def test_get_space():
         Function to test get_space()
 
     """
-    from ..io_tools import get_space
+    from cvrmap.utils.io_tools import get_space
     from bids import BIDSLayout
     from argparse import Namespace
     import pytest
@@ -132,18 +135,19 @@ def test_set_flags():
         Function to test set_flags()
 
     """
-    from ..io_tools import set_flags
+    from cvrmap.utils.io_tools import set_flags
     from argparse import Namespace
 
-    args = Namespace(**{'sloppy': 'value1', 'overwrite': 'value2',
-                        'use_aroma': 'value3', 'vesselsignal': 'value4',
-                        'globalsignal': 'value5'
+    args = Namespace(**{'sloppy': 'value1',
+                        'use_aroma': 'value3',
+                        'vesselsignal': 'value4',
+                        'globalsignal': 'value5',
+                        'superiorsagittalsinus': 'value6'
                         })
 
     flags = set_flags(args)
 
     assert flags['sloppy'] == args.sloppy
-    assert flags['overwrite'] == args.overwrite
     assert flags['ica_aroma'] == args.use_aroma
     assert flags['vesselsignal'] == args.vesselsignal
     assert flags['globalsignal'] == args.globalsignal
@@ -154,17 +158,20 @@ def test_setup_subject_output_paths():
         Function to test setup_subject_output_paths()
 
     """
-    from ..io_tools import setup_subject_output_paths
+    from cvrmap.utils.io_tools import setup_subject_output_paths
     from argparse import Namespace
     import os
     from shutil import rmtree
 
-    args = Namespace(**{'sloppy': 'value1', 'overwrite': 'value2',
-                        'use_aroma': 'value3', 'vesselsignal': 'value4',
-                        'globalsignal': 'value5'
+    args = Namespace(**{'sloppy': 'value1',
+                        'use_aroma': 'value3',
+                        'vesselsignal': 'value4',
+                        'globalsignal': 'value5',
+                        'superiorsagittalsinus': 'value6'
                         })
     output_dir = '/tmp/tmp_pytest'
     subject_label = 'dummylabel'
+    task = 'dummyTask'
     space = 'dummyspace'
     res = None
     custom_label = 'dummycustomlabel'
@@ -172,14 +179,14 @@ def test_setup_subject_output_paths():
     if os.path.isdir(output_dir):
         rmtree(output_dir)
 
-    outputs = setup_subject_output_paths(output_dir, subject_label, space, res, args, custom_label)
+    outputs = setup_subject_output_paths(output_dir, subject_label, space, res, task, args, custom_label)
 
     assert isinstance(outputs, dict)
     assert os.path.isdir(output_dir)
 
-    keys_to_check = ['report', 'cvr', 'delay', 'denoised', 'etco2', 'vesselsignal', 'globalsignal', 'breathing_figure',
-     'boldmean_figure', 'vesselsignal_figure', 'globalsignal_figure', 'cvr_figure', 'delay_figure', 'vesselmask_figure',
-     'globalmask_figure', 'summary_reportlet', 'denoising_reportlet']
+    keys_to_check = ['report', 'cvr', 'delay', 'denoised', 'etco2', 'vesselsignal', 'globalsignal', 'superiorsagittalsinus','breathing_figure',
+     'boldmean_figure', 'vesselsignal_figure', 'globalsignal_figure', 'superiorsagittalsinus_figure', 'cvr_figure', 'delay_figure', 'vesselmask_figure',
+     'globalmask_figure', 'superiorsagittalsinusmask_figure', 'summary_reportlet', 'denoising_reportlet']
 
     assert keys_to_check == list(outputs.keys())
 
@@ -191,7 +198,7 @@ def test_get_physio_data():
         Function to test get_physio_data()
 
     """
-    from ..io_tools import get_physio_data
+    from cvrmap.utils.io_tools import get_physio_data
     from bids import BIDSLayout
     import numpy as np
     from pathlib import Path
@@ -251,7 +258,7 @@ def test_get_aroma_noise_ic_list():
         Function to test get_aroma_noise_ic_list()
 
     """
-    from ..io_tools import get_aroma_noise_ic_list
+    from cvrmap.utils.io_tools import get_aroma_noise_ic_list
     from bids import BIDSLayout
     from pathlib import Path
     from shutil import rmtree

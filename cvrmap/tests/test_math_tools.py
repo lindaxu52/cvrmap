@@ -7,7 +7,8 @@ def test_match_timecourses():
         Test function for math_timecourses. Generate random data.
     """
     import numpy as np
-    from ..math_tools import match_timecourses
+    from cvrmap.utils.math_tools import match_timecourses
+    from cvrmap.utils.math_tools import match_timecourses
     n1 = np.random.randint(100, 150)
     n2 = np.random.randint(100, 150)
     y1 = np.random.random(n1)
@@ -23,8 +24,8 @@ def test_tccorr():
     """
 
     import numpy as np
-    from ..math_tools import tccorr
-    from ..processing import DataObj
+    from cvrmap.utils.math_tools import tccorr
+    from cvrmap.utils.processing import DataObj
 
     eps = 1E-3  # a small number to check strong (anti-)correlations
 
@@ -61,9 +62,9 @@ def test_build_shifted_signal():
         Function to test build_shifted_signal
     """
 
-    from ..math_tools import build_shifted_signal
+    from cvrmap.utils.math_tools import build_shifted_signal
     import numpy as np
-    from ..processing import DataObj
+    from cvrmap.utils.processing import DataObj
 
     # test 1
 
@@ -99,9 +100,9 @@ def test_compute_global_signal():
         Test function for compute_global_signal
     """
 
-    from ..math_tools import compute_global_signal
+    from cvrmap.utils.math_tools import compute_global_signal
     import numpy as np
-    from ..processing import DataObj
+    from cvrmap.utils.processing import DataObj
 
     data = np.random.random([130, 50, 110])
     fake_fmri_data = DataObj(data=data, sampling_frequency=3, data_type='bold')
@@ -123,8 +124,8 @@ def test_get_corrected_noiselist():
         Test function for get_corrected_noiselist
     """
 
-    from ..math_tools import get_corrected_noiselist
-    from ..processing import DataObj
+    from cvrmap.utils.math_tools import get_corrected_noiselist
+    from cvrmap.utils.processing import DataObj
     import numpy as np
     import pandas as pd
 

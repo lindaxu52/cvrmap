@@ -11,7 +11,7 @@ Created: May 2022
 """
 
 import sys
-from .utils import *
+from cvrmap.utils import *
 
 def main():
     """
@@ -68,12 +68,16 @@ def main():
             aroma_noise_ic_list = get_aroma_noise_ic_list(basic_filter, layout)
             melodic_mixing_df, melodic_mixing_path = get_melodic_mixing(basic_filter, layout)
 
-            if flags['vesselsignal'] or flags['globalsignal']:
+            if flags['vesselsignal'] or flags['globalsignal'] or flags['superiorsagittalsinus']:
                 if flags['vesselsignal']:
                     # vesselsignal extraction must be done in MNI space
                     mask_img = get_vesselmask(mni_preproc, parameters['vesseldensity_threshold'])
                     mask_output = outputs['vesselsignal']
                     signal_label = r'$vesselsignal timecourse$'
+                if flags['superiorsagittalsinus']:
+                    mask_img = get_superiorsagittalsinusmask(mni_preproc)
+                    mask_output = outputs['superiorsagittalsinus']
+                    signal_label = r'superiorsagittalsinus timecourse$'
                 if flags['globalsignal']:
                     mask_img = mask.img
                     mask_output = outputs['globalsignal']
@@ -107,7 +111,7 @@ def main():
             denoised.sampling_frequency = preproc.sampling_frequency
             denoised.save(outputs['denoised'], preproc.path)
 
-            if flags['vesselsignal'] or flags['globalsignal']:
+            if flags['vesselsignal'] or flags['globalsignal'] or flags['superiorsagittalsinus']:
                 probe, baseline = masksignalextract(mni_preproc, mask_img)
                 probe.label = signal_label
                 baseline.label = signal_label
@@ -156,7 +160,7 @@ def main():
             # compute and save response maps
             results['cvr'] = compute_response(results['intercept'], results['slope'], probe.baseline,
                                               np.mean(probe.data))
-            if flags['vesselsignal']:
+            if flags['vesselsignal'] or flags['superiorsagittalsinus']:
                 results['cvr'].units = "Arbitrary units"
                 results['cvr'].measurement_type = 'relative-CVR'
                 results['cvr'].data = 10*results['cvr'].data/np.nanstd(results['cvr'].data)
@@ -180,6 +184,13 @@ def main():
                 results['globalsignal'] = True
             else:
                 results['globalsignal'] = False
+
+            if flags['superiorsagittalsinus']:
+                results['superiorsagittalsinusmask'] = mask_img
+                results['meanepi'] = get_meanepi(preproc)
+                results['superiorsagittalsinus'] = True
+            else:
+                results['superiorsagittalsinus'] = False
 
             results['probe'] = probe
             results['shifted_probe'] = probe.shifted_dataobjects[global_signal_shift]
