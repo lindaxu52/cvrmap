@@ -141,7 +141,8 @@ def test_set_flags():
     args = Namespace(**{'sloppy': 'value1',
                         'use_aroma': 'value3',
                         'vesselsignal': 'value4',
-                        'globalsignal': 'value5'
+                        'globalsignal': 'value5',
+                        'superiorsagittalsinus': 'value6'
                         })
 
     flags = set_flags(args)
@@ -165,7 +166,8 @@ def test_setup_subject_output_paths():
     args = Namespace(**{'sloppy': 'value1',
                         'use_aroma': 'value3',
                         'vesselsignal': 'value4',
-                        'globalsignal': 'value5'
+                        'globalsignal': 'value5',
+                        'superiorsagittalsinus': 'value6'
                         })
     output_dir = '/tmp/tmp_pytest'
     subject_label = 'dummylabel'
@@ -182,9 +184,9 @@ def test_setup_subject_output_paths():
     assert isinstance(outputs, dict)
     assert os.path.isdir(output_dir)
 
-    keys_to_check = ['report', 'cvr', 'delay', 'denoised', 'etco2', 'vesselsignal', 'globalsignal', 'breathing_figure',
-     'boldmean_figure', 'vesselsignal_figure', 'globalsignal_figure', 'cvr_figure', 'delay_figure', 'vesselmask_figure',
-     'globalmask_figure', 'summary_reportlet', 'denoising_reportlet']
+    keys_to_check = ['report', 'cvr', 'delay', 'denoised', 'etco2', 'vesselsignal', 'globalsignal', 'superiorsagittalsinus','breathing_figure',
+     'boldmean_figure', 'vesselsignal_figure', 'globalsignal_figure', 'superiorsagittalsinus_figure', 'cvr_figure', 'delay_figure', 'vesselmask_figure',
+     'globalmask_figure', 'superiorsagittalsinusmask_figure', 'summary_reportlet', 'denoising_reportlet']
 
     assert keys_to_check == list(outputs.keys())
 
