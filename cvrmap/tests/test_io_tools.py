@@ -9,7 +9,7 @@ def test_arguments_manager():
         Function to test arguments_manager()
 
     """
-    from ..io_tools import arguments_manager
+    from cvrmap.utils.io_tools import arguments_manager 
     import sys
     from unittest.mock import patch
 
@@ -26,11 +26,11 @@ def test_get_subjects_to_analyze():
         Function to test get_subjects_to_analyze()
 
     """
-    from ..io_tools import get_subjects_to_analyze
+    from cvrmap.utils.io_tools import get_subjects_to_analyze
     from bids import BIDSLayout
     from argparse import Namespace
     import pytest
-    dummy_data_path = 'cvrmap/utils/tests/data'
+    dummy_data_path = 'cvrmap/tests/data'
     layout = BIDSLayout(dummy_data_path, validate=False)
     args = Namespace(**{'participant_label': '007'})
     with pytest.raises(SystemExit) as e:
@@ -43,7 +43,7 @@ def test_get_fmriprep_dir():
         Function to test get_fmriprep_dir()
 
     """
-    from ..io_tools import get_fmriprep_dir
+    from cvrmap.utils.io_tools import get_fmriprep_dir
     from argparse import Namespace
     import pytest
 
@@ -61,11 +61,11 @@ def test_get_task():
         Function to test get_task()
 
     """
-    from ..io_tools import get_task
+    from cvrmap.utils.io_tools import get_task
     from bids import BIDSLayout
     from argparse import Namespace
     import pytest
-    dummy_data_path = 'cvrmap/utils/tests/data'
+    dummy_data_path = 'cvrmap/tests/data'
     layout = BIDSLayout(dummy_data_path, validate=False)
     args = Namespace(**{'task': 'some_task'})
     with pytest.raises(SystemExit) as e:
@@ -78,7 +78,7 @@ def test_get_custom_label():
         Function to test get_custom_label()
 
     """
-    from ..io_tools import get_custom_label
+    from cvrmap.utils.io_tools import get_custom_label
     from argparse import Namespace
 
     args = Namespace(**{'label': 'crazyname'})
@@ -95,7 +95,7 @@ def test_get_space():
         Function to test get_space()
 
     """
-    from ..io_tools import get_space
+    from cvrmap.utils.io_tools import get_space
     from bids import BIDSLayout
     from argparse import Namespace
     import pytest
@@ -135,7 +135,7 @@ def test_set_flags():
         Function to test set_flags()
 
     """
-    from ..io_tools import set_flags
+    from cvrmap.utils.io_tools import set_flags
     from argparse import Namespace
 
     args = Namespace(**{'sloppy': 'value1',
@@ -159,7 +159,7 @@ def test_setup_subject_output_paths():
         Function to test setup_subject_output_paths()
 
     """
-    from ..io_tools import setup_subject_output_paths
+    from cvrmap.utils.io_tools import setup_subject_output_paths
     from argparse import Namespace
     import os
     from shutil import rmtree
@@ -197,7 +197,7 @@ def test_get_physio_data():
         Function to test get_physio_data()
 
     """
-    from ..io_tools import get_physio_data
+    from cvrmap.utils.io_tools import get_physio_data
     from bids import BIDSLayout
     import numpy as np
     from pathlib import Path
@@ -257,7 +257,7 @@ def test_get_aroma_noise_ic_list():
         Function to test get_aroma_noise_ic_list()
 
     """
-    from ..io_tools import get_aroma_noise_ic_list
+    from cvrmap.utils.io_tools import get_aroma_noise_ic_list
     from bids import BIDSLayout
     from pathlib import Path
     from shutil import rmtree
