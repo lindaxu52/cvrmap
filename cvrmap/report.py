@@ -594,63 +594,81 @@ class CVRReportGenerator:
                     <!-- Delay Statistics -->
                     <div class="summary-card">
                         <h4><i class="fas fa-clock"></i> Hemodynamic Delay Statistics</h4>
-                        {f"""
+                        {"""
                         <div style="margin-top: 1rem;">
                             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
                                 <div style="text-align: center; padding: 0.75rem; background: #e8f4f8; border-radius: 6px;">
-                                    <div style="font-size: 1.2em; font-weight: bold; color: #17a2b8;">{histogram_stats['delay_stats']['mean']:.2f}s</div>
+                                    <div style="font-size: 1.2em; font-weight: bold; color: #17a2b8;">{mean:.2f}s</div>
                                     <div style="font-size: 0.85em; color: #666;">Mean Delay</div>
                                 </div>
                                 <div style="text-align: center; padding: 0.75rem; background: #f8f9fa; border-radius: 6px;">
-                                    <div style="font-size: 1.2em; font-weight: bold; color: #6c757d;">{histogram_stats['delay_stats']['std']:.2f}s</div>
+                                    <div style="font-size: 1.2em; font-weight: bold; color: #6c757d;">{std:.2f}s</div>
                                     <div style="font-size: 0.85em; color: #666;">Standard Dev</div>
                                 </div>
                                 <div style="text-align: center; padding: 0.75rem; background: #fff3cd; border-radius: 6px;">
-                                    <div style="font-size: 1.2em; font-weight: bold; color: #856404;">{histogram_stats['delay_stats']['median']:.2f}s</div>
+                                    <div style="font-size: 1.2em; font-weight: bold; color: #856404;">{median:.2f}s</div>
                                     <div style="font-size: 0.85em; color: #666;">Median</div>
                                 </div>
                                 <div style="text-align: center; padding: 0.75rem; background: #d4edda; border-radius: 6px;">
-                                    <div style="font-size: 1.2em; font-weight: bold; color: #155724;">{histogram_stats['delay_stats']['n_voxels']:,}</div>
+                                    <div style="font-size: 1.2em; font-weight: bold; color: #155724;">{n_voxels:,}</div>
                                     <div style="font-size: 0.85em; color: #666;">Brain Voxels</div>
                                 </div>
                             </div>
                             <div style="margin-top: 1rem; padding: 0.75rem; background: #f8f9fa; border-radius: 6px; font-size: 0.9em;">
-                                <strong>Range:</strong> [{histogram_stats['delay_stats']['min']:.2f}, {histogram_stats['delay_stats']['max']:.2f}] seconds<br>
-                                <strong>IQR:</strong> [{histogram_stats['delay_stats']['q25']:.2f}, {histogram_stats['delay_stats']['q75']:.2f}] seconds
+                                <strong>Range:</strong> [{min_val:.2f}, {max_val:.2f}] seconds<br>
+                                <strong>IQR:</strong> [{q25:.2f}, {q75:.2f}] seconds
                             </div>
                         </div>
-                        """ if histogram_stats.get('delay_stats') else "<p style='color: #666; font-style: italic;'>Delay statistics not available</p>"}
+                        """.format(
+                            mean=histogram_stats['delay_stats']['mean'],
+                            std=histogram_stats['delay_stats']['std'],
+                            median=histogram_stats['delay_stats']['median'],
+                            n_voxels=histogram_stats['delay_stats']['n_voxels'],
+                            min_val=histogram_stats['delay_stats']['min'],
+                            max_val=histogram_stats['delay_stats']['max'],
+                            q25=histogram_stats['delay_stats']['q25'],
+                            q75=histogram_stats['delay_stats']['q75']
+                        ) if histogram_stats.get('delay_stats') else "<p style='color: #666; font-style: italic;'>Delay statistics not available</p>"}
                     </div>
                     
                     <!-- CVR Statistics -->
                     <div class="summary-card">
                         <h4><i class="fas fa-brain"></i> CVR Statistics</h4>
-                        {f"""
+                        {"""
                         <div style="margin-top: 1rem;">
                             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
                                 <div style="text-align: center; padding: 0.75rem; background: #d4edda; border-radius: 6px;">
-                                    <div style="font-size: 1.2em; font-weight: bold; color: #155724;">{histogram_stats['cvr_stats']['mean']:.4f}</div>
+                                    <div style="font-size: 1.2em; font-weight: bold; color: #155724;">{mean:.4f}</div>
                                     <div style="font-size: 0.85em; color: #666;">Mean CVR</div>
                                 </div>
                                 <div style="text-align: center; padding: 0.75rem; background: #f8f9fa; border-radius: 6px;">
-                                    <div style="font-size: 1.2em; font-weight: bold; color: #6c757d;">{histogram_stats['cvr_stats']['std']:.4f}</div>
+                                    <div style="font-size: 1.2em; font-weight: bold; color: #6c757d;">{std:.4f}</div>
                                     <div style="font-size: 0.85em; color: #666;">Standard Dev</div>
                                 </div>
                                 <div style="text-align: center; padding: 0.75rem; background: #fff3cd; border-radius: 6px;">
-                                    <div style="font-size: 1.2em; font-weight: bold; color: #856404;">{histogram_stats['cvr_stats']['median']:.4f}</div>
+                                    <div style="font-size: 1.2em; font-weight: bold; color: #856404;">{median:.4f}</div>
                                     <div style="font-size: 0.85em; color: #666;">Median</div>
                                 </div>
                                 <div style="text-align: center; padding: 0.75rem; background: #e8f4f8; border-radius: 6px;">
-                                    <div style="font-size: 1.2em; font-weight: bold; color: #17a2b8;">{histogram_stats['cvr_stats']['n_voxels']:,}</div>
+                                    <div style="font-size: 1.2em; font-weight: bold; color: #17a2b8;">{n_voxels:,}</div>
                                     <div style="font-size: 0.85em; color: #666;">Brain Voxels</div>
                                 </div>
                             </div>
                             <div style="margin-top: 1rem; padding: 0.75rem; background: #f8f9fa; border-radius: 6px; font-size: 0.9em;">
-                                <strong>Range:</strong> [{histogram_stats['cvr_stats']['min']:.4f}, {histogram_stats['cvr_stats']['max']:.4f}] %BOLD/mmHg<br>
-                                <strong>IQR:</strong> [{histogram_stats['cvr_stats']['q25']:.4f}, {histogram_stats['cvr_stats']['q75']:.4f}] %BOLD/mmHg
+                                <strong>Range:</strong> [{min_val:.4f}, {max_val:.4f}] %BOLD/mmHg<br>
+                                <strong>IQR:</strong> [{q25:.4f}, {q75:.4f}] %BOLD/mmHg
                             </div>
                         </div>
-                        """ if histogram_stats.get('cvr_stats') else "<p style='color: #666; font-style: italic;'>CVR statistics not available</p>"}
+                        """.format(
+                            mean=histogram_stats['cvr_stats']['mean'],
+                            std=histogram_stats['cvr_stats']['std'],
+                            median=histogram_stats['cvr_stats']['median'],
+                            n_voxels=histogram_stats['cvr_stats']['n_voxels'],
+                            min_val=histogram_stats['cvr_stats']['min'],
+                            max_val=histogram_stats['cvr_stats']['max'],
+                            q25=histogram_stats['cvr_stats']['q25'],
+                            q75=histogram_stats['cvr_stats']['q75']
+                        ) if histogram_stats.get('cvr_stats') else "<p style='color: #666; font-style: italic;'>CVR statistics not available</p>"}
                     </div>
                 </div>
                 ''' if histogram_stats else ''}
