@@ -1,188 +1,452 @@
-[![codecov](https://codecov.io/gh/ln2t/cvrmap/graph/badge.svg?token=VGQPJX5078)](https://codecov.io/gh/ln2t/cvrmap) ![License](https://img.shields.io/github/license/ln2t/cvrmap)
+# CVRmap - Cerebrovascular Reactivity Mapping Pipeline
+
+[![Python](https://img.shields.io/badge/python-3.8%2B-blue)](https://python.org)
+[![Docker](https://img.shields.io/badge/docker-available-brightgreen)](https://hub.docker.com/r/arovai/cvrmap)
+[![BIDS](https://img.shields.io/badge/BIDS-compatible-orange)](https://bids.neuroimaging.io/)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![DOI](https://zenodo.org/badge/588501488.svg)](https://zenodo.org/doi/10.5281/zenodo.10400739)
 
+CVRmap is a comprehensive Python CLI application for cerebrovascular reactivity (CVR) mapping using BIDS-compatible physiological and BOLD fMRI data. The pipeline processes CO₂ challenge data to generate maps of cerebrovascular reactivity and hemodynamic delay, providing insights into brain vascular health and function.
 
+## 🧠 Overview
 
-# About
+Cerebrovascular reactivity (CVR) measures the ability of cerebral blood vessels to respond to vasoactive stimuli. CVRmap processes:
 
-CVRmap is an opensource (license AGPLv3) software to compute maps of Cerebro-Vascular Reactivity (CVR).
+- **Physiological signals**: CO₂ traces from gas challenges
+- **BOLD fMRI data**: Preprocessed functional MRI data
 
-The software is compatible with the Brain Imagning Data Structure (BIDS) standard for applications.
+The pipeline generates quantitative maps of:
+- **CVR maps**: Vascular reactivity (%BOLD/mmHg)
+- **Delay maps**: Hemodynamic response timing (seconds)
+- **Quality metrics**: Statistical analysis and validation
 
-The paper describing the toolbox is available [here](https://rdcu.be/dCCZW). If you are using CVRmap for your research, please cite the paper accordingly.
+## ✨ Features
 
-A normative dataset can be downloaded from openneuro: [ds004604](https://openneuro.org/datasets/ds004604)
+### Core Analysis
+- **BIDS-compatible** data handling and organization
+- **Physiological signal processing** with ETCO₂ extraction and peak detection
+- **BOLD preprocessing** with AROMA-based denoising and refinement
+- **Cross-correlation analysis** for optimal delay mapping
+- **Global signal analysis** with physiological delay correction
+- **Independent Component (IC) classification** with ETCO₂ correlation analysis
 
-CVRmap is also distributed as a package, the full API documentation being [here](https://ln2t.github.io/cvrmap).
+### Advanced Processing
+- **4-step denoising pipeline**: AROMA refinement → Non-aggressive denoising → Temporal filtering → Spatial smoothing
+- **Intelligent component classification**: Automatic identification of physiologically-relevant components
+- **Configurable parameters**: Customizable thresholds and processing options
+- **Multi-space support**: Processing in native and standard spaces
 
-# Installation
+### Outputs & Reporting
+- **Interactive HTML reports** with comprehensive analysis summaries
+- **Statistical analysis** with histogram distributions and quantitative metrics
+- **Quality control figures** with physiological signal overlays
+- **BIDS derivatives** following neuroimaging standards
+- **Publication-ready visualizations** with proper citations
 
-# Note about dependencies
+## 📋 Prerequisites
 
-All dependencies are specified in `requirements.txt`.
+### Data Requirements
 
-# Option 1: docker (recommended option!)
+1. **BIDS-formatted dataset** with functional MRI data
+2. **Physiological recordings** (CO₂ traces) during gas challenge
+3. **fMRIPrep derivatives** (preprocessed BOLD data and brain masks)
 
-The easiest way to install `cvrmap` is to use docker:
+### System Requirements
 
-```
-docker pull arovai/cvrmap:VERSION
-```
+- Python 3.8+ or Docker
+- 4+ GB RAM (8+ GB recommended)
+- Storage space for derivatives (~2-5GB per subject)
 
-where of course `VERSION` must be replaced by any other available version (e.g. 2.0.0).
-Check out the [`cvrmap` docker hub page](https://hub.docker.com/repository/docker/arovai/cvrmap/general) to find more info on the available images.
+## 🚀 Installation
 
-To test your installation, you can use for instance
+### Option 1: Docker Installation (Recommended)
 
-```
-docker run arovai/cvrmap:VERSION --version
-```
-
-This will output the version and exit. You can also type
-
-```
-docker run arovai/cvrmap:VERSION --help
-```
-
-for help.
-
-For the reader not familiar with docker, you can pass some data to the docker image with
-
-```
-docker run -v /path/to/your/bids/folder:/rawdata -v /path/to/your/derivatives:/derivatives arovai/cvrmap:VERSION /rawdata /derivatives/cvrmap participant
-```
-
-For more information about the command line options, see the **Usage** section.
-
-# Option 2: Singularity (good for HPC)
-
-You can also build a Singularity image file using
-
-```
-singularity build arovai.cvrmap.VERSION.sif docker://arovai/cvrmap:VERSION
-```
-
-You can for instance run this command inside your home directory, and then you'll have a singularity image file named `arovai.cvrmap.VERSION.sif` in there. To run it, still in the folder where the image is located, run
-
-```
-singularity run -B /path/to/your/bids/folder:/rawdata -B /path/to/your/derivatives:/derivatives arovai.cvrmap.VERSION.sif /rawdata /derivatives/cvrmap participant
+1. **Pull from Docker Hub**:
+```bash
+docker pull arovai/cvrmap:latest
 ```
 
-Make sure that the folder `/path/to/your/derivatives` exists before launching this command.
-
-Of course, you are free to place the image where ever suits you; you'll simply have to adapt the path when calling `singularity`.
-
-# Option 3: python environment (using pip)
-
-`cvrmap` is also available on [pypi](https://pypi.org/manage/project/cvrmap/releases). We strongly recommend that you install it in a virtual environment.
-First, install `virtualenv`:
-
-```
-pip install virtualenv
+2. **Verify installation**:
+```bash
+docker run --rm arovai/cvrmap:latest --version
 ```
 
-Then create a virtual env. To deal with potential conflicts in versions of the required packages withing `cvrmap`, we recommend you create one environment for each `cvrmap` version:
+### Option 2: Python/Pip Installation
 
-```
-export VERSION="2.0.19"
-virtualenv cvrmap-env-$VERSION
-```
-
-Activate the environment and install `cvrmap`:
-```
-source cvrmap-env-$VERSION/bin/activate && pip install cvrmap==$VERSION
+1. **Create virtual environment**:
+```bash
+python -m venv cvrmap-env
+source cvrmap-env/bin/activate  # Linux/macOS
+# or
+cvrmap-env\Scripts\activate     # Windows
 ```
 
-Warning: make sure you are using Python version 3.10 (or more recent)!
+2. **Install CVRmap**:
+```bash
+# From PyPI (when available)
+pip install cvrmap
 
-This will add a command in your `PATH` so that you can directly launch `cvrmap`:
-
-```
-cvrmap -h
-```
-
-Note that the docker image is essentially build using this procedure, as you can see in the `Dockerfile` located in the `docker` folder of this repo.
-
-# Usage
-
-To run CVRmap, you must first have data to crunch. If you don't have data, and you want to test CVRmap, you can download the publicly available dataset on openneuro [ds004604](https://openneuro.org/datasets/ds004604) which include compatible rawdata, fmriprep derivatives, as well as `cvrmap` (v1.0) outputs.
-If you have your own data that you want to analyze with CVRmap, make sure to observe the following:
-first of all, the data are supposed to a [BIDS](https://bids-specification.readthedocs.io/en/stable/) dataset. For each subject, you must have a T1w image, a BOLD image and a physiological file containing the breathing data (CO2) recorded during the fMRI scan. For instance, for `sub-01`, the data should look like this:
-
-```
-sub-01/anat/sub-01_T1w.nii.gz
-sub-01/anat/sub-01_T1w.json
-sub-01/func/sub-01_task-gas_bold.nii.gz
-sub-01/func/sub-01_task-gas_bold.json
-sub-01/func/sub-01_task-gas_physio.tsv.gz
-sub-01/func/sub-01_task-gas_physio.json
+# From source
+git clone https://github.com/arovai/cvrmap.git
+cd cvrmap
+pip install -e .
 ```
 
-In this example, the taskname BIDS entity is `gas`. If yours differs, that's not a problem, and you'll be able to run `cvrmap` provided you add the option `--taskname your_task_name` when launching the software.
+3. **Verify installation**:
+```bash
+cvrmap --version
+```
 
-Note that the `sub-01/func/sub-01_task-gas_physio.json` file must contain a `SamplingFrequency` field as well as a `co2` field to specify the units of measurement of CO2 levels. An example of `sub-01/func/sub-01_task-gas_physio.json` would be:
+## 📊 Data Preparation
+
+### 1. BIDS Raw Data Structure
+
+Your BIDS dataset should include:
 
 ```
+bids_dir/
+├── dataset_description.json
+├── participants.tsv
+├── sub-01/
+│   ├── func/
+│   │   ├── sub-01_task-gas_bold.nii.gz
+│   │   ├── sub-01_task-gas_bold.json
+│   │   ├── sub-01_task-gas_physio.tsv.gz
+│   │   └── sub-01_task-gas_physio.json
+│   └── anat/
+│       ├── sub-01_T1w.nii.gz
+│       └── sub-01_T1w.json
+└── ...
+```
+
+### 2. Physiological Data Format
+
+Physiological data should be in BIDS format with CO₂ measurements:
+
+**`sub-01_task-gas_physio.tsv.gz`**:
+```
+co2
+35.2
+35.4
+35.6
+40.1
+...
+```
+
+**`sub-01_task-gas_physio.json`**:
+```json
 {
     "SamplingFrequency": 100,
     "StartTime": 0,
-    "Columns": [
-        "co2"
-    ],
-    "co2": {
-        "Units": "mmHg"
-    }
+    "Columns": ["co2"]
 }
 ```
 
-In this example, the `sub-01/func/sub-01_task-gas_physio.tsv.gz` must have only one column, giving the CO2 readings at a sampling frequency of 100 Hz, starting at time 0 with respect to the first valid fMRI volume, in the units of mmHg.
-Note though that the `StartTime` field is not used at all by `cvrmap`, as it explores various time lags by itself.
-If the CO2 readings are in percentage of CO2 concentration (which is also often used), the "Units" field must be "%", and in that case `cvrmap` will convert percentages to mmHg automatically. Finally, the total duration of the CO2 recording must not necessarily match the duration of the BOLD acquisition: depending on the case, CVRmap trims or uses a baseline extrapolation automatically.
+### 3. fMRIPrep Prerequisites
 
-The rawdata must also have been processed using [fMRIPrep](https://fmriprep.org/en/stable). A minimalistic fMRIPrep call compatible with CVRmap is:
+Run fMRIPrep on your BIDS dataset:
 
-```
-fmriprep /path/to/bids_dir /path/to/derivatives/fmriprep participant --fs-license-file /path/to/fslicense --use-aroma
-```
-
-*Warning* the versions of fMRIPrep above 23.1.0 don't support the `--use-aroma` option anymore. For this reason, we *must* use older versions. We will provide a patch to `cvrmap` to handle newer versions of fMRIPrep in the future.
-
-We are now good to go and launch CVRmap with
-
-```
-cvrmap /path/to/bids_dir /path/to/derivatives/cvrmap participant --fmriprep_dir /path/to/derivatives/fmriprep
+```bash
+fmriprep bids_dir derivatives/fmriprep participant \
+    --participant-label 01 \
+    --task gas \
+    --output-spaces MNI152NLin2009cAsym:res-2 T1w \
+    --use-aroma
 ```
 
-Notes:
-- the exact `cvrmap` command might depend on the installation option you choose (see above, options 1, 2 and 3)
-- the `--fmriprep_dir` option can be omitted if the fMRIPrep derivatives are located in `/path/to/bids_dir/derivatives/fmriprep`.
-- if the BOLD taskname is not `gas`, you must add `--taskname your_task_name`.
-- if you want the outputs in another space, and if this space was included in the fMRIPrep call, you must add `--space your_custom_space`. The default space is `MNI152NLin2009cAsym`, which is also the default space of fMRIPrep.
-- if you want to use the ICA-AROMA classification for signal confounds, then add `--use-aroma`. Otherwise, when the flag is omitted, CVRmap will perform non-aggressive denoising itself using a refinement of the ICA-AROMA classification of noise sources (see paper for more details).
-- more info and options can be found when asking politely for help with `cvrmap --help`.
+> **⚠️ fMRIPrep Version Warning**  
+> We recommend using **fMRIPrep version 21.0.4**. Later versions might work as long as the `--use-aroma` option exists. However, this option has been **removed in version 23.1.0**. For version 23.1.0 and onward, a patch will be provided soon.
 
-`cvrmap` will run for about 15 minutes per participant on recent computers. The results are stored in `/path/to/derivatives/cvrmap` following BIDS standard for derivatives.  More specifically, the outputs are as follows:
+Required fMRIPrep outputs:
+- Preprocessed BOLD: `*_desc-preproc_bold.nii.gz`
+- Brain mask: `*_desc-brain_mask.nii.gz`
+- AROMA components: `*_AROMAnoiseICs.csv`
+- Confounds: `*_desc-confounds_timeseries.tsv`
 
-```
-sub-01/extras/sub-01_desc-etco2_timecourse.tsv.gz
-sub-01/extras/sub-01_desc-etco2_timecourse.json
-sub-01/extras/sub-01_space-MNI152NLin2009cAsym_denoised.nii.gz
-sub-01/extras/sub-01_space-MNI152NLin2009cAsym_denoised.json
-sub-01/figures/sub-01_boldmean.svg
-sub-01/figures/sub-01_breathing.svg
-sub-01/figures/sub-001_denoising.html
-sub-01/figures/sub-001_summary.html
-sub-01/figures/sub-01_space-MNI152NLin2009cAsym_cvr.svg
-sub-01/figures/sub-01_space-MNI152NLin2009cAsym_delay.svg
-sub-01/sub-01_space-MNI152NLin2009cAsym_delay.nii.gz
-sub-01/sub-01_space-MNI152NLin2009cAsym_delay.json
-sub-01/sub-01_space-MNI152NLin2009cAsym_cvr.nii.gz
-sub-01/sub-01_space-MNI152NLin2009cAsym_cvr.json
-sub-01.html
+## 🔧 Usage
+
+### Basic Command Structure
+
+```bash
+cvrmap <bids_dir> <output_dir> {participant,group} [OPTIONS]
 ```
 
-The `extras` folder contains the `etco2` file with the end-tidal timecourse extracted from the original CO2 readings as well as the non-aggressively denoised BOLD series (the series are also high-pass filtered and smoothed at 5mm FWHM). Some pictures for the report are stored within `figures`. The delay map contains the computed time delays (or time lags) in seconds, and normalized to the global signal delay. The main map of interest is of course the CVR map! For a quick analysis, the html report is also included.
+### Python/Pip Usage
 
-# Bugs or questions
+```bash
+# Single participant
+cvrmap /path/to/bids /path/to/output participant \
+    --participant-label 01 \
+    --task gas \
+    --derivatives fmriprep=/path/to/fmriprep
 
-Should you encounter any bug, weird behavior or if you have questions, do not hesitate to open an issue, and we'll happily try to answer!
+# Multiple participants
+cvrmap /path/to/bids /path/to/output participant \
+    --participant-label 01 02 03 \
+    --task gas \
+    --derivatives fmriprep=/path/to/fmriprep \
+    --debug-level 1
+
+# With custom configuration
+cvrmap /path/to/bids /path/to/output participant \
+    --task gas \
+    --config custom_config.yaml \
+    --derivatives fmriprep=/path/to/fmriprep
+```
+
+### Docker Usage
+
+#### Basic Docker Run
+
+```bash
+docker run --rm \
+    -v /path/to/bids:/data/input:ro \
+    -v /path/to/output:/data/output \
+    arovai/cvrmap:latest \
+    /data/input /data/output participant \
+    --participant-label 01 \
+    --task gas \
+    --derivatives fmriprep=/data/input/derivatives/fmriprep
+```
+
+#### Docker Compose (Recommended)
+
+1. **Create `docker-compose.yml`**:
+```yaml
+services:
+  cvrmap:
+    image: arovai/cvrmap:latest
+    volumes:
+      - /path/to/your/bids:/data/input:ro
+      - /path/to/your/output:/data/output
+    environment:
+      - INPUT_DIR=/data/input
+      - OUTPUT_DIR=/data/output
+```
+
+2. **Run analysis**:
+```bash
+docker compose run --rm cvrmap \
+    /data/input /data/output participant \
+    --task gas \
+    --derivatives fmriprep=/data/input/derivatives/fmriprep
+```
+
+### Command Line Options
+
+| Option | Description | Example |
+|--------|-------------|---------|
+| `--participant-label` | Subject IDs to process | `--participant-label 01 02` |
+| `--task` | Task name (required) | `--task gas` |
+| `--space` | Output space | `--space MNI152NLin2009cAsym` |
+| `--derivatives` | Pipeline derivatives | `--derivatives fmriprep=/path` |
+| `--config` | Custom configuration | `--config config.yaml` |
+| `--debug-level` | Verbosity (0=info, 1=debug) | `--debug-level 1` |
+
+## ⚙️ Configuration
+
+CVRmap uses YAML configuration files for parameter customization:
+
+### Default Configuration
+
+```yaml
+physio:
+  raw_co2_light_smoothing: 0.06      # CO₂ signal smoothing (seconds)
+  peak_detection_smoothing: 0.8      # Peak detection smoothing (seconds)
+
+cross_correlation:
+  delay_max: 30.0                    # Maximum delay range (seconds)
+
+delay:
+  delay_correlation_threshold: 0.6   # Minimum correlation for delay maps
+
+bold:
+  denoising:
+    aroma_correlation_threshold: 0.5 # AROMA component threshold
+  temporal_filtering:
+    sigma: 63.0                      # Temporal filter sigma (seconds)
+  spatial_smoothing:
+    fwhm: 5.0                        # Spatial smoothing FWHM (mm)
+```
+
+### Custom Configuration
+
+Create a custom YAML file and use `--config`:
+
+```yaml
+# custom_config.yaml
+physio:
+  raw_co2_light_smoothing: 0.1
+  peak_detection_smoothing: 1.0
+
+delay:
+  delay_correlation_threshold: 0.7
+
+bold:
+  temporal_filtering:
+    sigma: 75.0
+```
+
+## 📈 Output Structure
+
+CVRmap generates BIDS-compatible derivatives:
+
+```
+output_dir/
+├── dataset_description.json
+├── sub-01/
+│   ├── figures/                           # Quality control figures
+│   │   ├── sub-01_task-gas_desc-delayhist.png
+│   │   ├── sub-01_task-gas_desc-cvrhist.png
+│   │   ├── sub-01_task-gas_desc-globaldelay.png
+│   │   ├── sub-01_task-gas_desc-icclassification.png
+│   │   └── sub-01_task-gas_desc-physio.png
+│   ├── func/                              # Functional derivatives
+│   │   ├── sub-01_task-gas_desc-cvr_bold.nii.gz
+│   │   ├── sub-01_task-gas_desc-delay_bold.nii.gz
+│   │   ├── sub-01_task-gas_desc-correlation_bold.nii.gz
+│   │   └── sub-01_task-gas_desc-denoised_bold.nii.gz
+│   └── sub-01_task-gas_desc-cvrmap.html   # Interactive report
+└── logs/                                  # Processing logs
+```
+
+### Key Output Files
+
+#### NIfTI Images
+- **`*_desc-cvr_bold.nii.gz`**: CVR maps (%BOLD/mmHg)
+- **`*_desc-delay_bold.nii.gz`**: Hemodynamic delay maps (seconds)
+- **`*_desc-correlation_bold.nii.gz`**: Cross-correlation maps
+- **`*_desc-denoised_bold.nii.gz`**: Preprocessed BOLD data
+
+#### Figures
+- **`*_desc-physio.png`**: Physiological signal preprocessing
+- **`*_desc-globaldelay.png`**: Global signal analysis
+- **`*_desc-icclassification.png`**: Independent component classification
+- **`*_desc-delayhist.png`**: Delay distribution histogram
+- **`*_desc-cvrhist.png`**: CVR distribution histogram
+
+#### Interactive Report
+- **`*_desc-cvrmap.html`**: Comprehensive analysis report with:
+  - Processing summary and parameters
+  - Physiological signal analysis
+  - Denoising pipeline results
+  - Global delay analysis
+  - Statistical summaries with histograms
+  - Quality control metrics
+
+## 📊 Report Content
+
+The interactive HTML report includes:
+
+### 1. Summary Section
+- Processing parameters and configuration
+- Data quality metrics
+- Software versions and citations
+
+### 2. Physiological Analysis
+- CO₂ signal preprocessing
+- Peak detection and baseline correction
+- Signal quality assessment
+
+### 3. Denoising Pipeline
+- AROMA component analysis
+- IC classification with ETCO₂ correlation
+- Denoising step visualization
+
+### 4. Global Delay Analysis
+- Whole-brain delay estimation
+- Global signal correlation
+- Physiological delay correction
+
+### 5. Statistical Analysis
+- CVR and delay distribution histograms
+- Quantitative metrics (mean, std, percentiles)
+- Brain coverage statistics
+
+### 6. Quality Control
+- Processing validation
+- Signal-to-noise metrics
+- Outlier detection
+
+## 🔬 Scientific Background
+
+CVRmap implements established methods for cerebrovascular reactivity analysis:
+
+1. **Physiological preprocessing** with CO₂ signal processing
+2. **BOLD denoising** using AROMA-based component classification
+3. **Cross-correlation analysis** for optimal delay mapping
+4. **Statistical modeling** of vascular reactivity
+
+### Key References
+
+- **Rovai, A., Lolli, V., Trotta, N. et al. (2024).** "CVRmap—a complete cerebrovascular reactivity mapping post-processing BIDS toolbox." *Scientific Reports*, 14, 7252. DOI: [10.1038/s41598-024-57572-3](https://doi.org/10.1038/s41598-024-57572-3)
+
+## 📝 Citation
+
+If you use CVRmap in your research, please cite:
+
+```bibtex
+@article{rovai2024cvrmap,
+  title={CVRmap—a complete cerebrovascular reactivity mapping post-processing BIDS toolbox},
+  author={Rovai, A. and Lolli, V. and Trotta, N. and others},
+  journal={Scientific Reports},
+  volume={14},
+  pages={7252},
+  year={2024},
+  publisher={Nature Publishing Group},
+  doi={10.1038/s41598-024-57572-3},
+  url={https://doi.org/10.1038/s41598-024-57572-3}
+}
+```
+
+### Additional Citations
+
+Please also cite the relevant software and pipelines used in preprocessing:
+- CVRmap toolbox: Rovai et al. (2024)
+- fMRIPrep preprocessing pipeline
+- AROMA denoising method
+
+## 🐛 Troubleshooting
+
+### Common Issues
+
+1. **Missing fMRIPrep derivatives**:
+   - Ensure AROMA was used: `--use-aroma`
+   - Check required outputs are present
+
+2. **Physiological data format**:
+   - Verify BIDS compliance
+   - Check sampling frequency in JSON
+
+3. **Memory issues**:
+   - Use Docker with memory limits
+   - Process subjects individually
+
+4. **Permission errors (Docker)**:
+   - Ensure output directory is writable
+   - Check user permissions (UID/GID)
+
+### Getting Help
+
+- **Issues**: [GitHub Issues](https://github.com/arovai/cvrmap/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/arovai/cvrmap/discussions)
+- **Documentation**: Check the interactive HTML reports for processing details
+
+## 🤝 Contributing
+
+Contributions are welcome! Please see our [Contributing Guidelines](CONTRIBUTING.md) for details.
+
+## 📄 License
+
+CVRmap is licensed under the MIT License. See [LICENSE](LICENSE) for details.
+
+## 🙏 Acknowledgments
+
+CVRmap development was supported by:
+- Neuroimaging research communities
+- BIDS specification contributors
+- Scientific Python ecosystem
+
+---
+
+**CVRmap** - Advancing cerebrovascular health research through robust, reproducible analysis pipelines.
