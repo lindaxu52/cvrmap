@@ -1,4 +1,5 @@
 import argparse
+from . import __version__
 
 def main():
     def check_derivatives(derivatives, logger):
@@ -34,7 +35,7 @@ def main():
         metavar='PIPELINE=PATH',
         help='Other pipeline derivatives in the form name=/path/to/derivatives. Example: --derivatives fmriprep=/path/to/fmriprep/derivatives'
     )
-    parser.add_argument('--version', action='version', version='cvrmap 0.1.0')
+    parser.add_argument('--version', action='version', version=f'cvrmap {__version__}')
     args = parser.parse_args()
 
     # Check if bids_dir exists
