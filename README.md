@@ -154,6 +154,9 @@ fmriprep bids_dir derivatives/fmriprep participant \
     --use-aroma
 ```
 
+> **⚠️ fMRIPrep Version Warning**  
+> We recommend using **fMRIPrep version 21.0.4**. Later versions might work as long as the `--use-aroma` option exists. However, this option has been **removed in version 23.1.0**. For version 23.1.0 and onward, a patch will be provided soon.
+
 Required fMRIPrep outputs:
 - Preprocessed BOLD: `*_desc-preproc_bold.nii.gz`
 - Brain mask: `*_desc-brain_mask.nii.gz`
