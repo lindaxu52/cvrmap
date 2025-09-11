@@ -9,7 +9,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PIP_TRUSTED_HOST="pypi.org pypi.python.org files.pythonhosted.org" \
-    CVRMAP_VERSION=4.0.0
+    CVRMAP_VERSION=4.0.1
 
 # Create non-root user for security
 RUN groupadd --gid 1000 cvrmap && \
