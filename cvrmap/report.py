@@ -108,7 +108,7 @@ class CVRReportGenerator:
         subject_label = self.participant_id
         task = self.task
         spaces = kwargs.get('space', 'MNI152NLin2009cAsym')
-        version = '0.1.0'  # TODO: get from package metadata
+        version = '4.0.0'  # TODO: get from package metadata
         global_delay = kwargs.get('global_delay', 0.0)
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
