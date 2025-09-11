@@ -1,0 +1,17 @@
+physio:
+  raw_co2_light_smoothing: 0.06  # seconds
+  peak_detection_smoothing: 0.8   # seconds
+
+cross_correlation:
+  delay_max: 30.0  # maximum delay for cross-correlation analysis in seconds
+
+delay:
+  delay_correlation_threshold: 0.6  # minimum correlation threshold for delay map masking
+
+bold:
+  denoising:
+    aroma_correlation_threshold: 0.5  # correlation threshold for AROMA component refinement
+  temporal_filtering:
+    sigma: 63.0 # sigma for temporal filtering in seconds
+  spatial_smoothing:
+    fwhm: 5.0  # Full Width at Half Maximum for spatial smoothing in mm

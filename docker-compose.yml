@@ -1,0 +1,42 @@
+services:
+  cvrmap:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: arovai/cvrmap:0.1.0
+    container_name: cvrmap
+    volumes:
+      # Mount your BIDS dataset and derivatives
+      - ${DATA_DIR:-./data/input}:/data/input:ro
+      - ${OUTPUT_DIR:-./data/output}:/data/output
+      - ${WORK_DIR:-./data/work}:/data/work
+    environment:
+      - INPUT_DIR=/data/input
+      - OUTPUT_DIR=/data/output
+      - WORK_DIR=/data/work
+    # Override the command to run specific analysis
+    # Example: docker-compose run cvrmap /data/input /data/output participant --task gas --derivatives fmriprep=/data/input/derivatives/fmriprep
+    command: ["--help"]
+    
+  # Development service with source code mounted
+  cvrmap-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: builder
+    image: arovai/cvrmap:0.1.0-dev
+    container_name: cvrmap-dev
+    volumes:
+      - .:/opt/cvrmap/src
+      - ${DATA_DIR:-./data/input}:/data/input:ro
+      - ${OUTPUT_DIR:-./data/output}:/data/output
+      - ${WORK_DIR:-./data/work}:/data/work
+    environment:
+      - INPUT_DIR=/data/input
+      - OUTPUT_DIR=/data/output
+      - WORK_DIR=/data/work
+      - PYTHONPATH=/opt/cvrmap/src
+    working_dir: /opt/cvrmap/src
+    command: ["bash"]
+    stdin_open: true
+    tty: true
