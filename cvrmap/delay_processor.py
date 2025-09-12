@@ -1,3 +1,46 @@
+# Standalone worker function for parallel delay processing
+def _process_delay_voxel_chunk(voxel_chunk, bold_data, shifted_signals, time_delays_seconds, global_delay, n_delays):
+    """Standalone worker function for processing a chunk of voxels in delay analysis"""
+    import numpy as np
+    import os
+    
+    # Set environment variables to prevent GUI issues in workers
+    os.environ['MPLBACKEND'] = 'Agg'
+    os.environ['QT_QPA_PLATFORM'] = 'offscreen'
+    
+    results = []
+    for voxel_coord in voxel_chunk:
+        i, j, k = voxel_coord
+        voxel_timeseries = bold_data[i, j, k, :]
+        
+        # Skip voxels with NaN values
+        if np.isnan(voxel_timeseries).any():
+            results.append((i, j, k, np.nan, np.nan))
+            continue
+        
+        # Cross-correlate this voxel with all shifted probe signals
+        best_correlation = 0.0
+        best_delay_idx = 0
+        
+        for delay_idx in range(n_delays):
+            probe_signal = shifted_signals[delay_idx, :]
+            min_length = len(voxel_timeseries)
+
+            # Calculate correlation (both signals are already normalized)
+            correlation = np.dot(voxel_timeseries, probe_signal) / min_length
+
+            # Track best correlation
+            if correlation > best_correlation:
+                best_correlation = correlation
+                best_delay_idx = delay_idx
+        
+        # Return results - delay relative to global delay for interpretation
+        optimal_delay_relative = time_delays_seconds[best_delay_idx] - global_delay
+        results.append((i, j, k, np.round(optimal_delay_relative, 3), best_correlation))
+    
+    return results
+
+
 class DelayProcessor:
     """
     Processor for analyzing temporal delays in physiological signals.
@@ -165,46 +208,23 @@ class DelayProcessor:
         # Implement voxel-wise cross-correlation analysis
         voxel_count = 0
         total_voxels = np.sum(brain_mask)
-
-        import scipy
-         
-        for i in range(x):
-            for j in range(y):
-                for k in range(z):
-                    if brain_mask[i, j, k]:
-                        voxel_timeseries = bold_data[i, j, k, :]
-                        
-                        # Skip voxels with NaN values
-                        if np.isnan(voxel_timeseries).any():
-                            continue
-                        
-                        # Cross-correlate this voxel with all shifted probe signals
-                        best_correlation = 0.0
-                        best_delay_idx = 0
-                        
-                        for delay_idx in range(n_delays):
-                            probe_signal = self.shifted_signals[delay_idx, :]
-                            min_length = len(voxel_timeseries)
-
-                            # Calculate correlation (both signals are already normalized)
-                            correlation = np.dot(voxel_timeseries, probe_signal) / min_length
-
-                            # Track best correlation
-                            if correlation > best_correlation:
-                                best_correlation = correlation
-                                best_delay_idx = delay_idx
-                        
-                        # Store results - delay relative to global delay for interpretation
-                        optimal_delay_relative = self.time_delays_seconds[best_delay_idx] - self.global_delay
-                        delay_maps[i, j, k] = np.round(optimal_delay_relative, 3)
-                        correlation_maps[i, j, k] = best_correlation
-                        
-                        voxel_count += 1
-                        
-                        # Progress logging
-                        if self.logger and voxel_count % 10000 == 0:
-                            progress = (voxel_count / total_voxels) * 100
-                            self.logger.debug(f"Processed {voxel_count:,}/{total_voxels:,} voxels ({progress:.1f}%)")
+        n_jobs = self.config.get('n_jobs', -1)
+        
+        if n_jobs == 1:
+            # Sequential processing (original implementation)
+            if self.logger:
+                self.logger.info("Using sequential processing for voxel-wise cross-correlation")
+            delay_maps, correlation_maps, voxel_count = self._process_voxels_sequential(
+                bold_data, brain_mask, x, y, z, n_delays, total_voxels
+            )
+        else:
+            # Parallel processing
+            if self.logger:
+                actual_n_jobs = n_jobs if n_jobs > 0 else None  # None means all CPUs
+                self.logger.info(f"Using parallel processing for voxel-wise cross-correlation (n_jobs={actual_n_jobs})")
+            delay_maps, correlation_maps, voxel_count = self._process_voxels_parallel(
+                bold_data, brain_mask, x, y, z, n_delays, total_voxels, n_jobs
+            )
         
         if self.logger:
             self.logger.info(f"Voxel-wise cross-correlation completed for {voxel_count:,} brain voxels")
@@ -248,3 +268,113 @@ class DelayProcessor:
         }
         
         return results
+
+    def _process_voxels_sequential(self, bold_data, brain_mask, x, y, z, n_delays, total_voxels):
+        """Sequential voxel processing (original implementation)"""
+        import numpy as np
+        import scipy
+        
+        delay_maps = np.full((x, y, z), np.nan)
+        correlation_maps = np.full((x, y, z), np.nan)
+        voxel_count = 0
+        
+        for i in range(x):
+            for j in range(y):
+                for k in range(z):
+                    if brain_mask[i, j, k]:
+                        voxel_timeseries = bold_data[i, j, k, :]
+                        
+                        # Skip voxels with NaN values
+                        if np.isnan(voxel_timeseries).any():
+                            continue
+                        
+                        # Cross-correlate this voxel with all shifted probe signals
+                        best_correlation = 0.0
+                        best_delay_idx = 0
+                        
+                        for delay_idx in range(n_delays):
+                            probe_signal = self.shifted_signals[delay_idx, :]
+                            min_length = len(voxel_timeseries)
+
+                            # Calculate correlation (both signals are already normalized)
+                            correlation = np.dot(voxel_timeseries, probe_signal) / min_length
+
+                            # Track best correlation
+                            if correlation > best_correlation:
+                                best_correlation = correlation
+                                best_delay_idx = delay_idx
+                        
+                        # Store results - delay relative to global delay for interpretation
+                        optimal_delay_relative = self.time_delays_seconds[best_delay_idx] - self.global_delay
+                        delay_maps[i, j, k] = np.round(optimal_delay_relative, 3)
+                        correlation_maps[i, j, k] = best_correlation
+                        
+                        voxel_count += 1
+                        
+                        # Progress logging
+                        if self.logger and voxel_count % 10000 == 0:
+                            progress = (voxel_count / total_voxels) * 100
+                            self.logger.debug(f"Processed {voxel_count:,}/{total_voxels:,} voxels ({progress:.1f}%)")
+        
+        return delay_maps, correlation_maps, voxel_count
+
+    def _process_voxels_parallel(self, bold_data, brain_mask, x, y, z, n_delays, total_voxels, n_jobs):
+        """Parallel voxel processing using joblib with chunked processing"""
+        from joblib import Parallel, delayed
+        import numpy as np
+        
+        # Set matplotlib backend to non-GUI to avoid tkinter issues in parallel processing
+        import matplotlib
+        matplotlib.use('Agg')
+        
+        # Get brain voxel coordinates
+        brain_coords = np.where(brain_mask)
+        brain_voxels = list(zip(brain_coords[0], brain_coords[1], brain_coords[2]))
+        
+        if self.logger:
+            self.logger.info(f"Processing {len(brain_voxels):,} brain voxels in parallel using chunked processing")
+        
+        # Extract the data we need to pass to workers (avoiding self references)
+        shifted_signals = self.shifted_signals.copy()
+        time_delays_seconds = self.time_delays_seconds.copy()
+        global_delay = self.global_delay
+        
+        # Calculate optimal chunk size based on number of jobs and total voxels
+        # Aim for chunks of 1000-5000 voxels to balance overhead and parallelization
+        if n_jobs == -1:
+            import multiprocessing
+            actual_n_jobs = multiprocessing.cpu_count()
+        else:
+            actual_n_jobs = n_jobs
+            
+        chunk_size = max(1000, min(5000, len(brain_voxels) // (actual_n_jobs * 4)))
+        
+        if self.logger:
+            self.logger.info(f"Using chunk size: {chunk_size} voxels per chunk")
+        
+        # Split brain voxels into chunks
+        voxel_chunks = [brain_voxels[i:i + chunk_size] for i in range(0, len(brain_voxels), chunk_size)]
+        
+        # Process chunks in parallel using multiprocessing backend for true parallelization
+        chunk_results = Parallel(n_jobs=n_jobs, backend='multiprocessing', verbose=1 if self.logger else 0)(
+            delayed(_process_delay_voxel_chunk)(chunk, bold_data, shifted_signals, time_delays_seconds, global_delay, n_delays) 
+            for chunk in voxel_chunks
+        )
+        
+        # Flatten results from all chunks
+        results = []
+        for chunk_result in chunk_results:
+            results.extend(chunk_result)
+        
+        # Assemble results
+        delay_maps = np.full((x, y, z), np.nan)
+        correlation_maps = np.full((x, y, z), np.nan)
+        voxel_count = 0
+        
+        for i, j, k, delay_val, corr_val in results:
+            if not (np.isnan(delay_val) or np.isnan(corr_val)):
+                delay_maps[i, j, k] = delay_val
+                correlation_maps[i, j, k] = corr_val
+                voxel_count += 1
+        
+        return delay_maps, correlation_maps, voxel_count

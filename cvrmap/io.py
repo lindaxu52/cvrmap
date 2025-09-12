@@ -2,6 +2,32 @@
 
 import os
 import yaml
+import numpy as np
+import json
+
+def convert_numpy_types(obj):
+	"""
+	Recursively convert numpy types to native Python types for JSON serialization.
+	"""
+	if isinstance(obj, dict):
+		return {key: convert_numpy_types(value) for key, value in obj.items()}
+	elif isinstance(obj, list):
+		return [convert_numpy_types(item) for item in obj]
+	elif isinstance(obj, np.integer):
+		return int(obj)
+	elif isinstance(obj, np.floating):
+		return float(obj)
+	elif isinstance(obj, np.ndarray):
+		return obj.tolist()
+	else:
+		return obj
+
+def safe_json_dump(obj, file_handle, **kwargs):
+	"""
+	Safely dump an object to JSON, converting numpy types as needed.
+	"""
+	converted_obj = convert_numpy_types(obj)
+	return json.dump(converted_obj, file_handle, **kwargs)
 
 def process_config(user_config_path=None, default_config_path=None):
 	"""
@@ -21,6 +47,61 @@ def process_config(user_config_path=None, default_config_path=None):
 	return config
 
 
+def _process_regressor_voxel(voxel_coord, delay_maps, time_delays_seconds, shifted_signals):
+	"""Standalone worker function for single voxel regressor processing"""
+	import numpy as np
+	import os
+	
+	# Set environment variables to prevent GUI issues in workers
+	os.environ['MPLBACKEND'] = 'Agg'
+	os.environ['QT_QPA_PLATFORM'] = 'offscreen'
+	
+	i, j, k = voxel_coord
+	
+	# Get optimal delay for this voxel
+	optimal_delay = delay_maps[i, j, k]
+	
+	# Skip if delay is NaN (masked voxel)
+	if np.isnan(optimal_delay):
+		return i, j, k, None
+	
+	# Find the closest delay in our time_delays_seconds array
+	delay_idx = np.argmin(np.abs(time_delays_seconds - optimal_delay))
+	
+	# Return the shifted probe signal for this voxel
+	return i, j, k, shifted_signals[delay_idx, :]
+
+
+def _process_regressor_voxel_chunk(voxel_chunk, delay_maps, time_delays_seconds, shifted_signals):
+	"""Standalone worker function for chunked regressor processing"""
+	import numpy as np
+	import os
+	
+	# Set environment variables to prevent GUI issues in workers
+	os.environ['MPLBACKEND'] = 'Agg'
+	os.environ['QT_QPA_PLATFORM'] = 'offscreen'
+	
+	results = []
+	for voxel_coord in voxel_chunk:
+		i, j, k = voxel_coord
+		
+		# Get optimal delay for this voxel
+		optimal_delay = delay_maps[i, j, k]
+		
+		# Skip if delay is NaN (masked voxel)
+		if np.isnan(optimal_delay):
+			results.append((i, j, k, None))
+			continue
+		
+		# Find the closest delay in our time_delays_seconds array
+		delay_idx = np.argmin(np.abs(time_delays_seconds - optimal_delay))
+		
+		# Return the shifted probe signal for this voxel
+		results.append((i, j, k, shifted_signals[delay_idx, :]))
+	
+	return results
+
+
 class OutputGenerator:
 	"""
 	Handle how data will be saved to the output directory.
@@ -29,7 +110,7 @@ class OutputGenerator:
 	in a BIDS-compatible derivatives structure.
 	"""
 	
-	def __init__(self, output_dir, logger=None):
+	def __init__(self, output_dir, logger=None, config=None):
 		"""
 		Initialize the OutputGenerator.
 		
@@ -39,9 +120,12 @@ class OutputGenerator:
 			Base output directory for saving results.
 		logger : logging.Logger, optional
 			Logger instance for consistent logging.
+		config : dict, optional
+			Configuration dictionary containing processing parameters.
 		"""
 		self.output_dir = output_dir
 		self.logger = logger
+		self.config = config or {}
 		self._ensure_dataset_description()
 	
 	def _ensure_dataset_description(self):
@@ -71,19 +155,19 @@ class OutputGenerator:
 			}
 			
 			with open(dataset_desc_path, 'w') as f:
-				json.dump(dataset_description, f, indent=2)
+				safe_json_dump(dataset_description, f, indent=2)
 			
 			if self.logger:
 				self.logger.info(f"Created dataset_description.json at {dataset_desc_path}")
 	
 	def save_etco2_data(self, etco2_container, participant, task):
 		"""
-		Save ETCO2 data to a .tsv.gz file with BIDS naming and JSON sidecar.
+		Save probe data (ETCO2 or ROI probe) to a .tsv.gz file with BIDS naming and JSON sidecar.
 		
 		Parameters:
 		-----------
 		etco2_container : ProbeContainer
-			Container with ETCO2 data to save.
+			Container with probe data to save (ETCO2 or ROI-based).
 		participant : str
 			Participant ID.
 		task : str
@@ -93,58 +177,86 @@ class OutputGenerator:
 		import pandas as pd
 		import numpy as np
 		
+		# Determine probe type and adjust naming accordingly
+		probe_type = getattr(etco2_container, 'probe_type', 'etco2')
+		is_roi_probe = probe_type == 'roi_probe'
+		
 		# Create BIDS directory structure
 		participant_dir = f"sub-{participant}"
-		physio_dir = "physio"
-		output_physio_dir = os.path.join(self.output_dir, participant_dir, physio_dir)
-		os.makedirs(output_physio_dir, exist_ok=True)
+		data_dir = "physio" if not is_roi_probe else "func"  # ROI probes go in func directory
+		output_data_dir = os.path.join(self.output_dir, participant_dir, data_dir)
+		os.makedirs(output_data_dir, exist_ok=True)
 		
 		# Create BIDS filename
-		filename_base = f"sub-{participant}_task-{task}_desc-etco2_physio"
-		tsv_path = os.path.join(output_physio_dir, f"{filename_base}.tsv.gz")
-		json_path = os.path.join(output_physio_dir, f"{filename_base}.json")
+		if is_roi_probe:
+			filename_base = f"sub-{participant}_task-{task}_desc-roiprobe_bold"
+		else:
+			filename_base = f"sub-{participant}_task-{task}_desc-etco2_physio"
+		
+		tsv_path = os.path.join(output_data_dir, f"{filename_base}.tsv.gz")
+		json_path = os.path.join(output_data_dir, f"{filename_base}.json")
 		
 		# Create time vector
 		time_vector = np.arange(len(etco2_container.data)) / etco2_container.sampling_frequency
 		
 		# Create DataFrame and save as TSV
+		probe_column_name = 'roiprobe' if is_roi_probe else 'etco2'
 		df = pd.DataFrame({
 			'time': time_vector,
-			'etco2': etco2_container.data
+			probe_column_name: etco2_container.data
 		})
 		df.to_csv(tsv_path, sep='\t', index=False, compression='gzip')
 		
 		# Create JSON sidecar
-		sidecar = {
-			"Description": "End-tidal CO2 (ETCO2) signal extracted from physiological recordings",
-			"SamplingFrequency": etco2_container.sampling_frequency,
-			"StartTime": 0.0,
-			"Columns": ["time", "etco2"],
-			"time": {
-				"Description": "Time in seconds from start of recording",
-				"Units": "s"
-			},
-			"etco2": {
-				"Description": "End-tidal CO2 concentration",
-				"Units": etco2_container.units if etco2_container.units else "mmHg"
-			},
-			"ProcessingDescription": "ETCO2 extracted using peak detection and cubic interpolation"
-		}
+		if is_roi_probe:
+			sidecar = {
+				"Description": "ROI-based probe signal extracted from brain region for CVR analysis",
+				"SamplingFrequency": float(etco2_container.sampling_frequency),
+				"StartTime": 0.0,
+				"Columns": ["time", "roiprobe"],
+				"time": {
+					"Description": "Time in seconds from start of recording",
+					"Units": "s"
+				},
+				"roiprobe": {
+					"Description": "ROI-averaged BOLD signal used as probe for CVR analysis",
+					"Units": "BOLD signal intensity"
+				},
+				"ProcessingDescription": "Signal extracted by averaging BOLD timeseries across specified ROI voxels"
+			}
+		else:
+			sidecar = {
+				"Description": "End-tidal CO2 (ETCO2) signal extracted from physiological recordings",
+				"SamplingFrequency": float(etco2_container.sampling_frequency),
+				"StartTime": 0.0,
+				"Columns": ["time", "etco2"],
+				"time": {
+					"Description": "Time in seconds from start of recording",
+					"Units": "s"
+				},
+				"etco2": {
+					"Description": "End-tidal CO2 concentration",
+					"Units": etco2_container.units if etco2_container.units else "mmHg"
+				},
+				"ProcessingDescription": "ETCO2 extracted using peak detection and cubic interpolation"
+			}
 		
 		# Add baseline value if available
 		if hasattr(etco2_container, 'baseline') and etco2_container.baseline is not None:
+			baseline_units = etco2_container.units if etco2_container.units and not is_roi_probe else ("BOLD units" if is_roi_probe else "mmHg")
 			sidecar["BaselineValue"] = {
 				"Value": float(etco2_container.baseline),
-				"Units": etco2_container.units if etco2_container.units else "mmHg",
-				"Description": "Baseline ETCO2 value computed using peakutils baseline estimation",
+				"Units": baseline_units,
+				"Description": "Baseline probe value computed using peakutils baseline estimation",
 				"Method": "peakutils.baseline"
 			}
 		
 		with open(json_path, 'w') as f:
-			json.dump(sidecar, f, indent=2)
+			safe_json_dump(sidecar, f, indent=2)
 		
 		if self.logger:
-			self.logger.info(f"Saved ETCO2 data to {tsv_path}")
+			probe_desc = "ROI probe" if is_roi_probe else "ETCO2"
+			self.logger.info(f"Saved {probe_desc} data to {tsv_path}")
 		
 		return tsv_path, json_path
 	
@@ -213,6 +325,289 @@ class OutputGenerator:
 		
 		return fig_path
 	
+	def create_roi_probe_figure(self, roi_probe_container, participant, task, config):
+		"""
+		Create a figure showing ROI-based probe signal with ROI information.
+		
+		Parameters:
+		-----------
+		roi_probe_container : ProbeContainer
+			Container with ROI-extracted probe signal.
+		participant : str
+			Participant ID.
+		task : str
+			Task name.
+		config : dict
+			Configuration dictionary with ROI settings.
+		"""
+		import matplotlib.pyplot as plt
+		import numpy as np
+		
+		# Create BIDS directory structure
+		participant_dir = f"sub-{participant}"
+		figures_dir = "figures"
+		output_figures_dir = os.path.join(self.output_dir, participant_dir, figures_dir)
+		os.makedirs(output_figures_dir, exist_ok=True)
+		
+		# Create BIDS filename
+		filename = f"sub-{participant}_task-{task}_desc-roiprobe.png"
+		fig_path = os.path.join(output_figures_dir, filename)
+		
+		# Get ROI configuration details
+		roi_config = config.get('roi_probe', {})
+		roi_method = roi_config.get('method', 'Unknown')
+		
+		# Create time vector
+		probe_time = np.arange(len(roi_probe_container.data)) / roi_probe_container.sampling_frequency
+		
+		# Create figure
+		fig, ax = plt.subplots(figsize=(12, 6))
+		
+		# Plot ROI probe signal
+		ax.plot(probe_time, roi_probe_container.data, label='ROI Probe Signal', color='green', linewidth=2)
+		
+		# Add baseline line if available
+		if hasattr(roi_probe_container, 'baseline') and roi_probe_container.baseline is not None:
+			ax.axhline(y=roi_probe_container.baseline, color='red', linestyle='--', linewidth=2, 
+			          label=f'Baseline ({roi_probe_container.baseline:.3f})')
+		
+		# Set labels and title
+		ax.set_xlabel('Time (s)')
+		ax.set_ylabel('Signal Intensity (BOLD units)')
+		
+		# Create detailed title based on ROI method
+		title_parts = [f'ROI Probe Signal - Subject {participant}, Task {task}']
+		if roi_method == 'coordinates':
+			coords = roi_config.get('coordinates_mm', 'Unknown')
+			radius = roi_config.get('radius_mm', 'Unknown')
+			title_parts.append(f'Coordinates: {coords}, Radius: {radius}mm')
+		elif roi_method == 'mask':
+			mask_path = roi_config.get('mask_path', 'Unknown')
+			title_parts.append(f'Mask: {mask_path}')
+		elif roi_method == 'atlas':
+			atlas_path = roi_config.get('atlas_path', 'Unknown')
+			region_id = roi_config.get('region_id', 'Unknown')
+			title_parts.append(f'Atlas: {atlas_path}, Region: {region_id}')
+		
+		ax.set_title('\n'.join(title_parts))
+		ax.legend()
+		ax.grid(True, alpha=0.3)
+		
+		# Add information text box
+		info_text = f'ROI Method: {roi_method}\nProbe Type: {getattr(roi_probe_container, "probe_type", "roi_probe")}'
+		ax.text(0.02, 0.98, info_text, transform=ax.transAxes, 
+		        bbox=dict(boxstyle='round', facecolor='lightgreen', alpha=0.8), 
+		        verticalalignment='top', fontsize=10)
+		
+		plt.tight_layout()
+		plt.savefig(fig_path, dpi=300, bbox_inches='tight')
+		plt.close()
+		
+		if self.logger:
+			self.logger.info(f"Created ROI probe figure at {fig_path}")
+		
+		return fig_path
+	
+	def create_roi_visualization_figure(self, roi_probe_container, bold_container, participant, task, config):
+		"""
+		Create a figure showing the ROI overlay on the mean BOLD image.
+		
+		Parameters:
+		-----------
+		roi_probe_container : ProbeContainer
+			Container with ROI-extracted probe signal.
+		bold_container : BoldContainer
+			Container with BOLD data for background image.
+		participant : str
+			Participant ID.
+		task : str
+			Task name.
+		config : dict
+			Configuration dictionary with ROI settings.
+		"""
+		import matplotlib.pyplot as plt
+		import numpy as np
+		import nibabel as nib
+		
+		# Create BIDS directory structure
+		participant_dir = f"sub-{participant}"
+		figures_dir = "figures"
+		output_figures_dir = os.path.join(self.output_dir, participant_dir, figures_dir)
+		os.makedirs(output_figures_dir, exist_ok=True)
+		
+		# Create BIDS filename
+		filename = f"sub-{participant}_task-{task}_desc-roivisualization.png"
+		fig_path = os.path.join(output_figures_dir, filename)
+		
+		# Get ROI configuration details
+		roi_config = config.get('roi_probe', {})
+		roi_method = roi_config.get('method', 'Unknown')
+		
+		try:
+			# Create mean BOLD image
+			bold_img = nib.Nifti1Image(bold_container.data, bold_container.affine)
+			
+			# Create ROI mask based on method
+			roi_mask = None
+			roi_info = ""
+			
+			if roi_method == 'coordinates':
+				coords = roi_config.get('coordinates_mm', [0, 0, 0])
+				radius = roi_config.get('radius_mm', 5)
+				roi_info = f"Spherical ROI: {coords} mm, radius: {radius}mm"
+				
+				# Create spherical mask
+				x, y, z = np.meshgrid(
+					np.arange(bold_container.data.shape[0]),
+					np.arange(bold_container.data.shape[1]),
+					np.arange(bold_container.data.shape[2]),
+					indexing='ij'
+				)
+				
+				# Convert voxel coordinates to mm
+				voxel_coords = np.column_stack([x.ravel(), y.ravel(), z.ravel()])
+				mm_coords = nib.affines.apply_affine(bold_container.affine, voxel_coords)
+				
+				# Calculate distances to ROI center
+				distances = np.sqrt(np.sum((mm_coords - coords) ** 2, axis=1))
+				roi_mask = (distances <= radius).reshape(bold_container.data.shape[:3])
+				
+			elif roi_method == 'mask':
+				mask_path = roi_config.get('mask_path', '')
+				roi_info = f"Custom mask: {os.path.basename(mask_path)}"
+				
+				if mask_path and os.path.exists(mask_path):
+					mask_img = nib.load(mask_path)
+					mask_data = mask_img.get_fdata()
+					
+					# Handle resampling if needed (same logic as in roi_probe.py)
+					if mask_data.shape[:3] != bold_container.data.shape[:3]:
+						from nilearn.image import resample_to_img
+						bold_ref_img = nib.Nifti1Image(bold_container.data[:,:,:,0], bold_container.affine)
+						resampled_mask_img = resample_to_img(mask_img, bold_ref_img, interpolation='nearest')
+						mask_data = resampled_mask_img.get_fdata()
+					
+					roi_mask = mask_data > 0
+				else:
+					roi_mask = np.zeros(bold_container.data.shape[:3], dtype=bool)
+					
+			elif roi_method == 'atlas':
+				atlas_path = roi_config.get('atlas_path', '')
+				region_id = roi_config.get('region_id', 0)
+				roi_info = f"Atlas region: {os.path.basename(atlas_path)}, ID: {region_id}"
+				
+				if atlas_path and os.path.exists(atlas_path):
+					atlas_img = nib.load(atlas_path)
+					atlas_data = atlas_img.get_fdata()
+					
+					# Handle resampling if needed (same logic as in roi_probe.py)
+					if atlas_data.shape != bold_container.data.shape[:3]:
+						from nilearn.image import resample_to_img
+						bold_ref_img = nib.Nifti1Image(bold_container.data[:,:,:,0], bold_container.affine)
+						atlas_resampled = resample_to_img(atlas_img, bold_ref_img, interpolation='nearest')
+						atlas_data = atlas_resampled.get_fdata()
+					
+					roi_mask = atlas_data == region_id
+				else:
+					roi_mask = np.zeros(bold_container.data.shape[:3], dtype=bool)
+			
+			if roi_mask is not None and np.any(roi_mask):
+				# Create ROI mask image
+				roi_mask_img = nib.Nifti1Image(roi_mask.astype(float), bold_container.affine)
+				
+				# Create the visualization using matplotlib directly (not nilearn plotting)
+				fig, axes = plt.subplots(2, 3, figsize=(15, 10))
+				fig.suptitle(f'ROI Visualization - Subject {participant}, Task {task}\n{roi_info}', fontsize=14)
+				
+				# Calculate central slices for each view
+				mean_bold_data = np.mean(bold_container.data, axis=3)
+				
+				# Find slices with most ROI voxels
+				roi_x_counts = np.sum(roi_mask, axis=(1, 2))
+				roi_y_counts = np.sum(roi_mask, axis=(0, 2))
+				roi_z_counts = np.sum(roi_mask, axis=(0, 1))
+				
+				best_x = np.argmax(roi_x_counts) if np.max(roi_x_counts) > 0 else roi_mask.shape[0]//2
+				best_y = np.argmax(roi_y_counts) if np.max(roi_y_counts) > 0 else roi_mask.shape[1]//2
+				best_z = np.argmax(roi_z_counts) if np.max(roi_z_counts) > 0 else roi_mask.shape[2]//2
+				
+				# Sagittal view (x slice)
+				axes[0, 0].imshow(mean_bold_data[best_x, :, :].T, cmap='gray', origin='lower', aspect='auto')
+				axes[0, 0].imshow(roi_mask[best_x, :, :].T, cmap='Reds', origin='lower', alpha=0.7, aspect='auto')
+				axes[0, 0].set_title(f'Sagittal (x={best_x})')
+				axes[0, 0].set_xlabel('Y (posterior-anterior)')
+				axes[0, 0].set_ylabel('Z (inferior-superior)')
+				
+				# Coronal view (y slice)
+				axes[0, 1].imshow(mean_bold_data[:, best_y, :].T, cmap='gray', origin='lower', aspect='auto')
+				axes[0, 1].imshow(roi_mask[:, best_y, :].T, cmap='Reds', origin='lower', alpha=0.7, aspect='auto')
+				axes[0, 1].set_title(f'Coronal (y={best_y})')
+				axes[0, 1].set_xlabel('X (left-right)')
+				axes[0, 1].set_ylabel('Z (inferior-superior)')
+				
+				# Axial view (z slice)
+				axes[0, 2].imshow(mean_bold_data[:, :, best_z].T, cmap='gray', origin='lower', aspect='auto')
+				axes[0, 2].imshow(roi_mask[:, :, best_z].T, cmap='Reds', origin='lower', alpha=0.7, aspect='auto')
+				axes[0, 2].set_title(f'Axial (z={best_z})')
+				axes[0, 2].set_xlabel('X (left-right)')
+				axes[0, 2].set_ylabel('Y (posterior-anterior)')
+				
+				# Add ROI statistics
+				n_voxels = np.sum(roi_mask)
+				roi_volume_mm3 = n_voxels * np.abs(np.linalg.det(bold_container.affine[:3, :3]))
+				
+				axes[1, 0].text(0.1, 0.8, f'ROI Statistics:', fontsize=12, fontweight='bold')
+				axes[1, 0].text(0.1, 0.6, f'Voxels: {n_voxels:,}', fontsize=11)
+				axes[1, 0].text(0.1, 0.4, f'Volume: {roi_volume_mm3:.1f} mm³', fontsize=11)
+				axes[1, 0].text(0.1, 0.2, f'Method: {roi_method}', fontsize=11)
+				axes[1, 0].set_xlim(0, 1)
+				axes[1, 0].set_ylim(0, 1)
+				axes[1, 0].axis('off')
+				
+				# Plot ROI signal summary
+				if hasattr(roi_probe_container, 'data') and roi_probe_container.data is not None:
+					time_vec = np.arange(len(roi_probe_container.data)) / roi_probe_container.sampling_frequency
+					axes[1, 1].plot(time_vec, roi_probe_container.data, 'g-', linewidth=1.5)
+					axes[1, 1].set_xlabel('Time (s)')
+					axes[1, 1].set_ylabel('ROI Signal')
+					axes[1, 1].set_title('Extracted ROI Signal')
+					axes[1, 1].grid(True, alpha=0.3)
+				else:
+					axes[1, 1].text(0.5, 0.5, 'ROI signal not available', 
+								  ha='center', va='center', transform=axes[1, 1].transAxes)
+					axes[1, 1].axis('off')
+				
+				# Hide the last subplot
+				axes[1, 2].axis('off')
+				
+			else:
+				# Fallback if no ROI found
+				fig, ax = plt.subplots(figsize=(10, 6))
+				ax.text(0.5, 0.5, f'ROI Visualization Not Available\nMethod: {roi_method}\nNo valid ROI found', 
+						ha='center', va='center', fontsize=14)
+				ax.axis('off')
+			
+			plt.tight_layout()
+			plt.savefig(fig_path, dpi=300, bbox_inches='tight', facecolor='white')
+			plt.close()
+			
+			if self.logger:
+				self.logger.info(f"Created ROI visualization figure at {fig_path}")
+				
+		except Exception as e:
+			if self.logger:
+				self.logger.warning(f"Failed to create ROI visualization: {e}")
+			
+			# Create a simple fallback figure
+			fig, ax = plt.subplots(figsize=(10, 6))
+			ax.text(0.5, 0.5, f'ROI Visualization Error\n{str(e)}', 
+					ha='center', va='center', fontsize=12)
+			ax.axis('off')
+			plt.savefig(fig_path, dpi=300, bbox_inches='tight', facecolor='white')
+			plt.close()
+		
+		return fig_path
+	
 	def save_global_signal(self, global_signal_container, participant, task, space):
 		"""
 		Save global BOLD signal to a .tsv.gz file with BIDS naming and JSON sidecar.
@@ -273,7 +668,7 @@ class OutputGenerator:
 		}
 		
 		with open(json_path, 'w') as f:
-			json.dump(sidecar, f, indent=2)
+			safe_json_dump(sidecar, f, indent=2)
 		
 		if self.logger:
 			self.logger.info(f"Saved global signal to {tsv_path}")
@@ -466,10 +861,10 @@ class OutputGenerator:
 		
 		# Save JSON sidecars
 		with open(delay_json_path, 'w') as f:
-			json.dump(delay_sidecar, f, indent=2)
+			safe_json_dump(delay_sidecar, f, indent=2)
 		
 		with open(correlation_json_path, 'w') as f:
-			json.dump(correlation_sidecar, f, indent=2)
+			safe_json_dump(correlation_sidecar, f, indent=2)
 		
 		if self.logger:
 			self.logger.info(f"Saved delay map to {delay_nii_path}")
@@ -604,7 +999,7 @@ class OutputGenerator:
 		
 		return fig_path
 
-	def save_cvr_maps(self, cvr_results, bold_container, participant, task, space):
+	def save_cvr_maps(self, cvr_results, bold_container, participant, task, space, probe_container=None):
 		"""
 		Save CVR maps to NIfTI files with BIDS naming and JSON sidecars.
 		
@@ -652,28 +1047,44 @@ class OutputGenerator:
 		cvr_img = nib.Nifti1Image(cvr_maps, bold_container.affine)
 		nib.save(cvr_img, cvr_nii_path)
 		
+		# Determine probe type and appropriate units/description
+		is_roi_probe = probe_container and getattr(probe_container, 'probe_type', 'etco2') == 'roi_probe'
+		
+		if is_roi_probe:
+			description = "Cerebrovascular reactivity (CVR) map showing voxel-wise CVR values computed using GLM regression between BOLD signal and shifted ROI probe signal"
+			units = "arbitrary units (unitless)"
+			processing_desc = "CVR computed as b1/(b0 + probe_baseline*b1) where b0 and b1 are GLM coefficients from BOLD = b0 + b1*roi_probe_signal regression. Note: CVR values are in arbitrary units since ROI probe signal has no physiological calibration."
+			probe_info = "ROI-based probe extracted from brain region signal"
+		else:
+			description = "Cerebrovascular reactivity (CVR) map showing voxel-wise CVR values computed using GLM regression between BOLD signal and shifted ETCO2 probe signal"
+			units = "%BOLD/mmHg"
+			processing_desc = "CVR computed as b1/(b0 + probe_baseline*b1) where b0 and b1 are GLM coefficients from BOLD = b0 + b1*etco2_signal regression"
+			probe_info = "End-tidal CO2 (ETCO2) from physiological recordings"
+		
 		# Create JSON sidecar for CVR map
 		cvr_sidecar = {
-			"Description": "Cerebrovascular reactivity (CVR) map showing voxel-wise CVR values computed using GLM regression between BOLD signal and shifted ETCO2 probe signal",
-			"Units": "unitless",
+			"Description": description,
+			"Units": units,
 			"Space": space,
-			"ProcessingDescription": "CVR computed as b1/(b0 + probe_baseline*b1) where b0 and b1 are GLM coefficients from BOLD = b0 + b1*probe_signal regression",
+			"ProcessingDescription": processing_desc,
 			"DataType": "cvr",
 			"TaskName": task,
 			"GLMFormula": "BOLD ~ intercept + probe_signal",
-			"Method": "GeneralLinearModel"
+			"Method": "GeneralLinearModel",
+			"ProbeType": getattr(probe_container, 'probe_type', 'etco2') if probe_container else 'etco2',
+			"ProbeDescription": probe_info
 		}
 		
 		# Save JSON sidecar
 		with open(cvr_json_path, 'w') as f:
-			json.dump(cvr_sidecar, f, indent=2)
+			safe_json_dump(cvr_sidecar, f, indent=2)
 		
 		if self.logger:
 			self.logger.info(f"Saved CVR map to {cvr_nii_path}")
 		
 		# Create figure for the CVR map
 		try:
-			fig_path = self.create_cvr_figure(cvr_nii_path, participant, task, space)
+			fig_path = self.create_cvr_figure(cvr_nii_path, participant, task, space, probe_container)
 		except Exception as e:
 			if self.logger:
 				self.logger.warning(f"Could not create CVR map figure: {e}")
@@ -765,10 +1176,10 @@ class OutputGenerator:
 		
 		# Save JSON sidecars
 		with open(b0_json_path, 'w') as f:
-			json.dump(b0_sidecar, f, indent=2)
+			safe_json_dump(b0_sidecar, f, indent=2)
 		
 		with open(b1_json_path, 'w') as f:
-			json.dump(b1_sidecar, f, indent=2)
+			safe_json_dump(b1_sidecar, f, indent=2)
 		
 		if self.logger:
 			self.logger.info(f"Saved b0 coefficient map to {b0_nii_path}")
@@ -776,7 +1187,7 @@ class OutputGenerator:
 		
 		return b0_nii_path, b1_nii_path
 
-	def save_regressor_4d_map(self, delay_results, resampled_shifted_probes, bold_container, participant, task, space):
+	def save_regressor_4d_map(self, delay_results, resampled_shifted_probes, bold_container, participant, task, space, probe_container=None):
 		"""
 		Create and save a 4D NIfTI file where each voxel contains the timecourse of the 
 		resampled, optimally-shifted regressor based on the optimal delay for that voxel.
@@ -795,6 +1206,8 @@ class OutputGenerator:
 			Task name
 		space : str
 			Space name (e.g., 'MNI152NLin2009cAsym')
+		probe_container : ProbeContainer, optional
+			Container with probe information for metadata
 			
 		Returns:
 		--------
@@ -834,30 +1247,25 @@ class OutputGenerator:
 		# Fill each voxel with its optimal regressor timecourse
 		voxel_count = 0
 		total_brain_voxels = np.sum(brain_mask)
+		n_jobs = self.config.get('n_jobs', -1)
 		
-		for i in range(x):
-			for j in range(y):
-				for k in range(z):
-					if brain_mask[i, j, k]:
-						# Get optimal delay for this voxel
-						optimal_delay = delay_maps[i, j, k]
-						
-						# Skip if delay is NaN (masked voxel)
-						if np.isnan(optimal_delay):
-							continue
-						
-						# Find the closest delay in our time_delays_seconds array
-						delay_idx = np.argmin(np.abs(time_delays_seconds - optimal_delay))
-						
-						# Extract the corresponding shifted probe signal
-						regressor_4d[i, j, k, :] = shifted_signals[delay_idx, :]
-						
-						voxel_count += 1
-						
-						# Progress logging
-						if self.logger and voxel_count % 20000 == 0:
-							progress = (voxel_count / total_brain_voxels) * 100
-							self.logger.debug(f"Processed {voxel_count:,}/{total_brain_voxels:,} voxels ({progress:.1f}%) for 4D regressor map")
+		if n_jobs == 1:
+			# Sequential processing (original implementation)
+			if self.logger:
+				self.logger.info("Using sequential processing for 4D regressor map generation")
+			voxel_count = self._fill_regressor_4d_sequential(
+				regressor_4d, brain_mask, x, y, z, delay_maps, time_delays_seconds, 
+				shifted_signals, total_brain_voxels
+			)
+		else:
+			# Parallel processing
+			if self.logger:
+				actual_n_jobs = n_jobs if n_jobs > 0 else None  # None means all CPUs
+				self.logger.info(f"Using parallel processing for 4D regressor map generation (n_jobs={actual_n_jobs})")
+			voxel_count = self._fill_regressor_4d_parallel(
+				regressor_4d, brain_mask, x, y, z, delay_maps, time_delays_seconds, 
+				shifted_signals, total_brain_voxels, n_jobs
+			)
 		
 		# Create BIDS filename
 		regressor_base = f"sub-{participant}_task-{task}_space-{space}_desc-regressor4d_bold"
@@ -885,12 +1293,12 @@ class OutputGenerator:
 				"Description": "Range of delays tested in seconds"
 			},
 			"SpatialReference": "Each voxel uses its individually optimal delay from delay mapping analysis",
-			"ProbeType": "etco2"
+			"ProbeType": getattr(probe_container, 'probe_type', 'etco2') if probe_container else 'etco2'
 		}
 		
 		# Save JSON sidecar
 		with open(regressor_json_path, 'w') as f:
-			json.dump(regressor_sidecar, f, indent=2)
+			safe_json_dump(regressor_sidecar, f, indent=2)
 		
 		if self.logger:
 			self.logger.info(f"Saved 4D regressor map to {regressor_nii_path}")
@@ -898,7 +1306,69 @@ class OutputGenerator:
 		
 		return regressor_nii_path
 
-	def create_cvr_figure(self, cvr_nii_path, participant, task, space):
+	def _fill_regressor_4d_sequential(self, regressor_4d, brain_mask, x, y, z, delay_maps, 
+									time_delays_seconds, shifted_signals, total_brain_voxels):
+		"""Sequential 4D regressor filling (original implementation)"""
+		import numpy as np
+		
+		voxel_count = 0
+		
+		for i in range(x):
+			for j in range(y):
+				for k in range(z):
+					if brain_mask[i, j, k]:
+						# Get optimal delay for this voxel
+						optimal_delay = delay_maps[i, j, k]
+						
+						# Skip if delay is NaN (masked voxel)
+						if np.isnan(optimal_delay):
+							continue
+						
+						# Find the closest delay in our time_delays_seconds array
+						delay_idx = np.argmin(np.abs(time_delays_seconds - optimal_delay))
+						
+						# Extract the corresponding shifted probe signal
+						regressor_4d[i, j, k, :] = shifted_signals[delay_idx, :]
+						
+						voxel_count += 1
+						
+						# Progress logging
+						if self.logger and voxel_count % 20000 == 0:
+							progress = (voxel_count / total_brain_voxels) * 100
+							self.logger.debug(f"Processed {voxel_count:,}/{total_brain_voxels:,} voxels ({progress:.1f}%) for 4D regressor map")
+		
+		return voxel_count
+
+	def _fill_regressor_4d_parallel(self, regressor_4d, brain_mask, x, y, z, delay_maps, 
+								   time_delays_seconds, shifted_signals, total_brain_voxels, n_jobs):
+		"""Parallel 4D regressor filling using joblib"""
+		from joblib import Parallel, delayed
+		import numpy as np
+		
+		# Get brain voxel coordinates
+		brain_coords = np.where(brain_mask)
+		brain_voxels = list(zip(brain_coords[0], brain_coords[1], brain_coords[2]))
+		
+		if self.logger:
+			self.logger.info(f"Processing {len(brain_voxels):,} brain voxels in parallel for 4D regressor map")
+		
+		# Process voxels in parallel
+		results = Parallel(n_jobs=n_jobs, verbose=1 if self.logger else 0)(
+			delayed(_process_regressor_voxel)(voxel_coord, delay_maps, time_delays_seconds, shifted_signals) 
+			for voxel_coord in brain_voxels
+		)
+		
+		# Assemble results
+		voxel_count = 0
+		
+		for i, j, k, signal in results:
+			if signal is not None:
+				regressor_4d[i, j, k, :] = signal
+				voxel_count += 1
+		
+		return voxel_count
+
+	def create_cvr_figure(self, cvr_nii_path, participant, task, space, probe_container=None):
 		"""
 		Create a figure showing the CVR map using custom lightbox plotting.
 		
@@ -961,10 +1431,28 @@ class OutputGenerator:
 		                   top=gs[0].get_position(fig).y1 - 0.05,  # Leave space for title
 		                   hspace=0.05, wspace=0.05)
 		
+		# Determine probe type for appropriate units and scaling
+		is_roi_probe = probe_container and getattr(probe_container, 'probe_type', 'etco2') == 'roi_probe'
+		
 		# Set colormap and normalization
 		cmap = plt.cm.get_cmap('hot').copy()
 		cmap.set_bad(color='black')  # Set NaN/masked values to black
-		vmin, vmax = 0, 0.8
+		
+		if is_roi_probe:
+			# For ROI probe mode, adjust vmin/vmax to capture central portion of histogram
+			# Remove outliers and use percentile-based scaling
+			valid_data = cvr_data[np.isfinite(cvr_data)]
+			if len(valid_data) > 0:
+				vmin = np.percentile(valid_data, 5)   # 5th percentile
+				vmax = np.percentile(valid_data, 95)  # 95th percentile
+			else:
+				vmin, vmax = 0, 1
+			colorbar_label = 'CVR (arbitrary units)'
+		else:
+			# Traditional physio mode scaling
+			vmin, vmax = 0, 0.8
+			colorbar_label = 'CVR (%BOLD/mmHg)'
+		
 		norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
 		
 		# Plot each slice
@@ -996,7 +1484,7 @@ class OutputGenerator:
 		
 		# Add custom colorbar
 		cbar = plt.colorbar(plt.cm.ScalarMappable(norm=norm, cmap=cmap), cax=ax_cbar)
-		cbar.set_label('CVR (%BOLD/mmHg)', rotation=270, labelpad=15, color='white', fontsize=11)
+		cbar.set_label(colorbar_label, rotation=270, labelpad=15, color='white', fontsize=11)
 		cbar.ax.tick_params(colors='white', labelsize=9, width=0.5)
 		# Make colorbar outline thinner and less prominent
 		cbar.outline.set_edgecolor('white')
@@ -1017,3 +1505,89 @@ class OutputGenerator:
 			self.logger.info(f"Created CVR map figure at {fig_path}")
 		
 		return fig_path
+
+	def _fill_regressor_4d_sequential(self, regressor_4d, brain_mask, x, y, z, delay_maps, 
+	                                  time_delays_seconds, shifted_signals, total_brain_voxels):
+		"""Sequential processing for 4D regressor map generation"""
+		import numpy as np
+		
+		voxel_count = 0
+		
+		for i in range(x):
+			for j in range(y):
+				for k in range(z):
+					if brain_mask[i, j, k]:
+						# Get optimal delay for this voxel
+						optimal_delay = delay_maps[i, j, k]
+						
+						# Skip if delay is NaN (masked voxel)
+						if np.isnan(optimal_delay):
+							continue
+						
+						# Find the closest delay in our time_delays_seconds array
+						delay_idx = np.argmin(np.abs(time_delays_seconds - optimal_delay))
+						
+						# Extract the corresponding shifted probe signal
+						regressor_4d[i, j, k, :] = shifted_signals[delay_idx, :]
+						
+						voxel_count += 1
+						
+						# Progress logging
+						if self.logger and voxel_count % 20000 == 0:
+							progress = (voxel_count / total_brain_voxels) * 100
+							self.logger.debug(f"Processed {voxel_count:,}/{total_brain_voxels:,} voxels ({progress:.1f}%) for 4D regressor map")
+		
+		return voxel_count
+
+	def _fill_regressor_4d_parallel(self, regressor_4d, brain_mask, x, y, z, delay_maps,
+	                                time_delays_seconds, shifted_signals, total_brain_voxels, n_jobs):
+		"""Parallel processing for 4D regressor map generation with chunked processing"""
+		from joblib import Parallel, delayed
+		import numpy as np
+		
+		# Set matplotlib backend to non-GUI to avoid tkinter issues in parallel processing
+		import matplotlib
+		matplotlib.use('Agg')
+		
+		# Get brain voxel coordinates
+		brain_coords = np.where(brain_mask)
+		brain_voxels = list(zip(brain_coords[0], brain_coords[1], brain_coords[2]))
+		
+		if self.logger:
+			self.logger.info(f"Processing {len(brain_voxels):,} brain voxels in parallel for 4D regressor map using chunked processing")
+		
+		# Calculate optimal chunk size
+		if n_jobs == -1:
+			import multiprocessing
+			actual_n_jobs = multiprocessing.cpu_count()
+		else:
+			actual_n_jobs = n_jobs
+			
+		chunk_size = max(1000, min(5000, len(brain_voxels) // (actual_n_jobs * 4)))
+		
+		if self.logger:
+			self.logger.info(f"Using chunk size: {chunk_size} voxels per chunk for 4D regressor processing")
+		
+		# Split brain voxels into chunks
+		voxel_chunks = [brain_voxels[i:i + chunk_size] for i in range(0, len(brain_voxels), chunk_size)]
+		
+		# Process chunks in parallel using multiprocessing backend for true parallelization
+		chunk_results = Parallel(n_jobs=n_jobs, backend='multiprocessing', verbose=1 if self.logger else 0)(
+			delayed(_process_regressor_voxel_chunk)(chunk, delay_maps, time_delays_seconds, shifted_signals) 
+			for chunk in voxel_chunks
+		)
+		
+		# Flatten results from all chunks
+		results = []
+		for chunk_result in chunk_results:
+			results.extend(chunk_result)
+		
+		# Assemble results
+		voxel_count = 0
+		
+		for i, j, k, signal in results:
+			if signal is not None:
+				regressor_4d[i, j, k, :] = signal
+				voxel_count += 1
+		
+		return voxel_count

@@ -124,9 +124,11 @@ class CVRReportGenerator:
             temporal_sigma = kwargs.get('temporal_filtering_sigma', 100)
             spatial_fwhm = kwargs.get('spatial_smoothing_fwhm', 6)
         
-        # Get figure paths
+        # Get figure paths - check for both physio and ROI probe figures
         figures_dir = os.path.join(self.participant_dir, 'figures')
         physio_figure = f"sub-{subject_label}_task-{task}_desc-physio.png"
+        roi_probe_figure = f"sub-{subject_label}_task-{task}_desc-roiprobe.png"
+        roi_visualization_figure = f"sub-{subject_label}_task-{task}_desc-roivisualization.png"
         global_figure = f"sub-{subject_label}_task-{task}_space-{spaces}_desc-globalcorr.png"
         delay_figure = f"sub-{subject_label}_task-{task}_space-{spaces}_desc-delaymasked.png"
         cvr_figure = f"sub-{subject_label}_task-{task}_space-{spaces}_desc-cvr.png"
@@ -136,12 +138,18 @@ class CVRReportGenerator:
         
         # Check which figures exist
         physio_exists = os.path.exists(os.path.join(figures_dir, physio_figure))
+        roi_probe_exists = os.path.exists(os.path.join(figures_dir, roi_probe_figure))
+        roi_visualization_exists = os.path.exists(os.path.join(figures_dir, roi_visualization_figure))
         global_exists = os.path.exists(os.path.join(figures_dir, global_figure))
         delay_exists = os.path.exists(os.path.join(figures_dir, delay_figure))
         cvr_exists = os.path.exists(os.path.join(figures_dir, cvr_figure))
         ic_classification_exists = os.path.exists(os.path.join(figures_dir, ic_classification_figure))
         delay_histogram_exists = os.path.exists(os.path.join(figures_dir, delay_histogram_figure))
         cvr_histogram_exists = os.path.exists(os.path.join(figures_dir, cvr_histogram_figure))
+        
+        # Determine probe mode for appropriate labeling
+        roi_probe_enabled = self.config.get('roi_probe', {}).get('enabled', False) if self.config else False
+        probe_mode = "ROI" if roi_probe_enabled else "Physiological"
         
         # Get IC classification stats
         ic_stats = kwargs.get('bold_results', {}).get('ic_classification_stats', None)
@@ -367,7 +375,8 @@ class CVRReportGenerator:
             <div class="nav-title">CVR Analysis Report</div>
             <div class="nav-links">
                 <a href="#summary">Summary</a>
-                <a href="#physiological">Physiological</a>
+                <a href="#physiological">{"ROI Probe" if roi_probe_enabled else "Physiological"}</a>
+                {"<a href=\"#roi-visualization\">ROI Visualization</a>" if roi_probe_enabled else ""}
                 <a href="#denoising">Denoising</a>
                 <a href="#global-delay">Global Delay</a>
                 <a href="#delay-maps">Delay Maps</a>
@@ -421,7 +430,7 @@ class CVRReportGenerator:
                         <strong>Preprocessing:</strong> BIDS-compatible pipeline with AROMA denoising
                     </div>
                     <div class="detail-item">
-                        <strong>Signal Processing:</strong> End-tidal CO₂ extraction and optimization
+                        <strong>Signal Processing:</strong> {"ROI-based probe extraction and optimization" if roi_probe_enabled else "End-tidal CO₂ extraction and optimization"}
                     </div>
                     <div class="detail-item">
                         <strong>Spatial Normalization:</strong> {spaces} standard space
@@ -430,23 +439,49 @@ class CVRReportGenerator:
             </div>
         </section>
         
-        <!-- Physiological Data Section -->
+        <!-- Probe Data Section -->
         <section id="physiological" class="section">
             <div class="section-header">
-                <h2 class="section-title">Physiological Data Analysis</h2>
-                <p class="section-subtitle">Breathing signal processing and CO₂ trace extraction</p>
+                <h2 class="section-title">{probe_mode} Probe Analysis</h2>
+                <p class="section-subtitle">{"ROI-based probe signal extraction and processing" if roi_probe_enabled else "Breathing signal processing and CO₂ trace extraction"}</p>
             </div>
             <div class="section-content">
-                {"<div class='figure-container'>" + 
+                {("<div class='figure-container'>" + 
+                f"<img src='figures/{roi_probe_figure}' alt='ROI Probe Analysis' />" +
+                "<div class='figure-caption'>" +
+                "This graph shows the ROI-based probe signal extracted from the specified brain region. " +
+                "The signal is averaged across all voxels within the ROI and serves as an alternative to physiological recordings " +
+                "for CVR analysis. The baseline represents the mean signal level used for CVR computations." +
+                "</div></div>") if roi_probe_enabled and roi_probe_exists else 
+                ("<div class='figure-container'>" + 
                 f"<img src='figures/{physio_figure}' alt='Physiological Data Analysis' />" +
                 "<div class='figure-caption'>" +
                 "This graph shows the original breathing data with the reconstructed upper envelope and corresponding baseline. " +
                 "The end-tidal CO₂ (ETCO₂) trace is extracted from the breathing signal peaks and represents the CO₂ concentration " +
                 "at the end of each expiration, which serves as the regressor for CVR analysis." +
                 "</div></div>" if physio_exists else 
-                "<div class='warning'>Physiological data figure not found. Please ensure the analysis completed successfully.</div>"}
+                "<div class='warning'>Physiological data figure not found. Please ensure the analysis completed successfully.</div>")}
+        </section>
+        
+        <!-- ROI Visualization Section (only shown for ROI probe mode) -->
+        {f'''
+        <section id="roi-visualization" class="section">
+            <div class="section-header">
+                <h2 class="section-title">ROI Visualization</h2>
+                <p class="section-subtitle">Visual confirmation of the selected region of interest</p>
+            </div>
+            <div class="section-content">
+                {("<div class='figure-container'>" + 
+                f"<img src='figures/{roi_visualization_figure}' alt='ROI Visualization' />" +
+                "<div class='figure-caption'>" +
+                "This figure shows the selected region of interest (ROI) overlaid on the mean preprocessed BOLD image. " +
+                "The ROI is displayed in red across axial, sagittal, and coronal views to confirm proper localization. " +
+                "ROI statistics including volume and number of voxels are provided along with the extracted signal time course." +
+                "</div></div>") if roi_visualization_exists else 
+                "<div class='warning'>ROI visualization figure not found. Please ensure the ROI was properly defined.</div>"}
             </div>
         </section>
+        ''' if roi_probe_enabled else ''}
         
         <!-- Denoising Section -->
         <section id="denoising" class="section">
@@ -572,10 +607,16 @@ class CVRReportGenerator:
                 {"<div class='figure-container'>" + 
                 f"<img src='figures/{cvr_figure}' alt='CVR Analysis Results' />" +
                 "<div class='figure-caption'>" +
+                ("This brain map shows the cerebrovascular reactivity (CVR) values in arbitrary units. " +
+                "CVR quantifies the ability of cerebral blood vessels to respond to changes in the ROI probe signal. " +
+                "Higher values (warmer colors) indicate greater vascular reactivity, while lower values (cooler colors) " +
+                "suggest reduced vascular responsiveness. Note: CVR values are in arbitrary units since the ROI probe " +
+                "signal lacks physiological calibration." if roi_probe_enabled else
                 "This brain map shows the cerebrovascular reactivity (CVR) values in percentage change per mmHg CO₂. " +
                 "CVR quantifies the ability of cerebral blood vessels to respond to CO₂ changes. " +
                 "Higher values (warmer colors) indicate greater vascular reactivity, while lower values (cooler colors) " +
-                "suggest reduced vascular responsiveness. Brain slices are displayed in neurological convention " +
+                "suggest reduced vascular responsiveness.") +
+                " Brain slices are displayed in neurological convention " +
                 "(left on figure = left hemisphere)." +
                 "</div></div>" if cvr_exists else 
                 "<div class='warning'>CVR mapping figure not found. Please ensure the analysis completed successfully.</div>"}
@@ -655,8 +696,8 @@ class CVRReportGenerator:
                                 </div>
                             </div>
                             <div style="margin-top: 1rem; padding: 0.75rem; background: #f8f9fa; border-radius: 6px; font-size: 0.9em;">
-                                <strong>Range:</strong> [{min_val:.4f}, {max_val:.4f}] %BOLD/mmHg<br>
-                                <strong>IQR:</strong> [{q25:.4f}, {q75:.4f}] %BOLD/mmHg
+                                <strong>Range:</strong> [{min_val:.4f}, {max_val:.4f}] {units}<br>
+                                <strong>IQR:</strong> [{q25:.4f}, {q75:.4f}] {units}
                             </div>
                         </div>
                         """.format(
@@ -667,7 +708,8 @@ class CVRReportGenerator:
                             min_val=histogram_stats['cvr_stats']['min'],
                             max_val=histogram_stats['cvr_stats']['max'],
                             q25=histogram_stats['cvr_stats']['q25'],
-                            q75=histogram_stats['cvr_stats']['q75']
+                            q75=histogram_stats['cvr_stats']['q75'],
+                            units="arbitrary units" if roi_probe_enabled else "%BOLD/mmHg"
                         ) if histogram_stats.get('cvr_stats') else "<p style='color: #666; font-style: italic;'>CVR statistics not available</p>") + '''
                     </div>
                 </div>
@@ -701,8 +743,8 @@ class CVRReportGenerator:
                 <div style="margin-top: 2rem; padding: 1rem; background: #e8f4f8; border-radius: 6px; border-left: 4px solid #17a2b8;">
                     <strong>Interpretation Notes:</strong>
                     <ul style="margin-top: 0.5rem; margin-bottom: 0; padding-left: 1.5rem;">
-                        <li><strong>Delay values</strong> represent the optimal temporal shift between ETCO₂ and BOLD signals, reflecting hemodynamic response timing</li>
-                        <li><strong>CVR values</strong> quantify vascular reactivity as %BOLD signal change per mmHg CO₂ change</li>
+                        <li><strong>Delay values</strong> represent the optimal temporal shift between {"ROI probe" if roi_probe_enabled else "ETCO₂"} and BOLD signals, reflecting hemodynamic response timing</li>
+                        <li><strong>CVR values</strong> quantify vascular reactivity {"in arbitrary units relative to ROI probe signal changes" if roi_probe_enabled else "as %BOLD signal change per mmHg CO₂ change"}</li>
                         <li><strong>Normal ranges</strong> vary by brain region, age, and individual physiology</li>
                         <li><strong>Outlier values</strong> may indicate data quality issues or pathological conditions</li>
                     </ul>

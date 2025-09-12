@@ -1,6 +1,10 @@
 import argparse
 from . import __version__
 
+# Set matplotlib backend to non-GUI to avoid tkinter issues in parallel processing
+import matplotlib
+matplotlib.use('Agg')
+
 def main():
     def check_derivatives(derivatives, logger):
         import os
@@ -36,6 +40,24 @@ def main():
         help='Other pipeline derivatives in the form name=/path/to/derivatives. Example: --derivatives fmriprep=/path/to/fmriprep/derivatives'
     )
     parser.add_argument('--version', action='version', version=f'cvrmap {__version__}')
+    
+    # Parallel processing option
+    parser.add_argument('--n-jobs', type=int, default=-1,
+                       help='Number of parallel jobs for voxel processing. -1 uses all available CPUs, 1 disables parallelization (default: -1)')
+    
+    # ROI probe options
+    parser.add_argument('--roi-probe', action='store_true', help='Enable ROI-based probe instead of physiological recordings')
+    parser.add_argument('--roi-coordinates', nargs=3, type=float, metavar=('X', 'Y', 'Z'), 
+                       help='ROI coordinates in millimeters (mm) in world space for spherical ROI extraction (e.g., --roi-coordinates 0 -52 26)')
+    parser.add_argument('--roi-radius', type=float, default=6.0, 
+                       help='Radius in millimeters (mm) for spherical ROI (default: 6.0)')
+    parser.add_argument('--roi-mask', type=str, 
+                       help='Path to binary mask NIfTI file for ROI extraction')
+    parser.add_argument('--roi-atlas', type=str, 
+                       help='Path to atlas NIfTI file for ROI extraction')
+    parser.add_argument('--roi-region-id', type=int, 
+                       help='Region ID/label in atlas for ROI extraction')
+    
     args = parser.parse_args()
 
     # Check if bids_dir exists
@@ -74,6 +96,44 @@ def main():
 
     from .io import process_config
     config = process_config(user_config_path=args.config)
+    
+    # Add parallel processing configuration
+    config['n_jobs'] = args.n_jobs
+    
+    # Handle ROI probe command line arguments
+    if args.roi_probe:
+        logger.info("ROI probe mode enabled via command line")
+        
+        # Update config with ROI probe settings
+        if 'roi_probe' not in config:
+            config['roi_probe'] = {}
+        
+        config['roi_probe']['enabled'] = True
+        
+        # Determine ROI method and parameters
+        if args.roi_coordinates:
+            config['roi_probe']['method'] = 'coordinates'
+            config['roi_probe']['coordinates_mm'] = list(args.roi_coordinates)
+            config['roi_probe']['radius_mm'] = args.roi_radius
+            logger.info(f"ROI coordinates: {args.roi_coordinates}, radius: {args.roi_radius}mm")
+            
+        elif args.roi_mask:
+            config['roi_probe']['method'] = 'mask'
+            config['roi_probe']['mask_path'] = args.roi_mask
+            logger.info(f"ROI mask: {args.roi_mask}")
+            
+        elif args.roi_atlas and args.roi_region_id is not None:
+            config['roi_probe']['method'] = 'atlas'
+            config['roi_probe']['atlas_path'] = args.roi_atlas
+            config['roi_probe']['region_id'] = args.roi_region_id
+            logger.info(f"ROI atlas: {args.roi_atlas}, region: {args.roi_region_id}")
+            
+        else:
+            parser.error("When using --roi-probe, you must specify either:\n"
+                        "  --roi-coordinates X Y Z (and optionally --roi-radius)\n"
+                        "  --roi-mask PATH\n"
+                        "  --roi-atlas PATH --roi-region-id ID")
+    
     from .pipeline import Pipeline
     pipeline = Pipeline(args, logger, fmriprep_dir, config=config)
     pipeline.run()
