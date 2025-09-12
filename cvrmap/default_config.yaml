@@ -15,3 +15,35 @@ bold:
     sigma: 63.0 # sigma for temporal filtering in seconds
   spatial_smoothing:
     fwhm: 5.0  # Full Width at Half Maximum for spatial smoothing in mm
+
+# ROI-based probe extraction (alternative to physiological recordings)
+# This feature is useful when physiological data is not available or of poor quality.
+# It extracts a probe signal from a specified brain region instead of using ETCO2.
+roi_probe:
+  enabled: false  # Set to true to use ROI-based probe instead of physiological recordings
+  method: coordinates  # Options: 'coordinates', 'mask', 'atlas'
+  
+  # Method 1: Spherical ROI around specified coordinates
+  coordinates_mm: [0, 0, 0]  # [x, y, z] coordinates in mm (world space)
+  radius_mm: 6.0  # radius of spherical ROI in mm
+  
+  # Example ROI locations (uncomment and modify coordinates_mm above):
+  # Posterior Cingulate Cortex (PCC): [0, -52, 26] - High vascular density, robust CVR
+  # Middle Cerebral Artery Territory: [45, -10, 10] - Major vascular territory
+  # Sagittal Superior Sinus Region: [0, -70, 40] - Major venous drainage
+  
+  # Method 2: Binary mask file
+  mask_path: null  # path to binary mask NIfTI file
+  # Example usage:
+  # enabled: true
+  # method: mask
+  # mask_path: /path/to/your/roi_mask.nii.gz
+  
+  # Method 3: Atlas-based region extraction
+  atlas_path: null  # path to atlas NIfTI file
+  region_id: null  # region ID/label in atlas
+  # Example usage:
+  # enabled: true
+  # method: atlas
+  # atlas_path: /opt/fsl/data/atlases/HarvardOxford/HarvardOxford-sub-maxprob-thr0-1mm.nii.gz
+  # region_id: 13

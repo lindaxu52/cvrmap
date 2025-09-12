@@ -19,13 +19,8 @@ class Pipeline:
         from .physio_preprocessing import PhysioPreprocessor
         from .bold_preprocessing import BoldPreprocessor
         for participant in self.args.participant_label:
-            self.logger.info(f"Starting physio preprocessing for participant: {participant}")
-            physio_preprocessor = PhysioPreprocessor(self.args, self.logger, self.layout, participant, self.config)
-            physio_preprocessor.run()
-            etco2_container = physio_preprocessor.get_upper_envelope()
-            self.logger.info(f"Physio preprocessing completed for participant: {participant}")
             
-            # Create and load BOLD container to get duration information
+            # Create and load BOLD container first (needed for both probe types)
             self.logger.info(f"Loading BOLD data for participant: {participant}")
             from .data_container import BoldContainer
             bold_container = BoldContainer(
@@ -38,6 +33,24 @@ class Pipeline:
             bold_container.load()
             bold_duration_seconds = bold_container.data.shape[-1] / bold_container.sampling_frequency
             self.logger.info(f"BOLD data loaded with duration: {bold_duration_seconds:.2f}s")
+            
+            # Determine probe type and extract probe signal
+            roi_probe_enabled = self.config.get('roi_probe', {}).get('enabled', False)
+            
+            if roi_probe_enabled:
+                self.logger.info(f"Using ROI-based probe for participant: {participant}")
+                from .roi_probe import create_roi_probe_from_config
+                etco2_container = create_roi_probe_from_config(bold_container, self.config, self.logger)
+                self.logger.info(f"ROI probe extraction completed for participant: {participant}")
+                
+                # No physio_preprocessor in ROI mode
+                physio_preprocessor = None
+            else:
+                self.logger.info(f"Using physiological probe for participant: {participant}")
+                physio_preprocessor = PhysioPreprocessor(self.args, self.logger, self.layout, participant, self.config)
+                physio_preprocessor.run()
+                etco2_container = physio_preprocessor.get_upper_envelope()
+                self.logger.info(f"Physio preprocessing completed for participant: {participant}")
             
             # Extrapolate etco2 to match BOLD duration, in case recording was incomplete
             etco2_container.extrapolate(target_duration_seconds=bold_duration_seconds)
@@ -58,7 +71,6 @@ class Pipeline:
             
             # Get IC classification stats if available
             ic_classification_stats = getattr(bold_preprocessor, 'ic_classification_stats', None)
-            self.logger.info(f"BOLD preprocessing completed for participant: {participant}")
             
             # Compute global BOLD signal on the denoised data
             self.logger.info("Computing global BOLD signal across all voxels on denoised data")
@@ -92,9 +104,16 @@ class Pipeline:
             # Save ETCO2 data
             output_generator.save_etco2_data(etco2_container, participant, self.args.task)
             
-            # Create physio figure with original physio data and ETCO2
-            physio_container = physio_preprocessor.get_physio_container()
-            output_generator.create_physio_figure(physio_container, etco2_container, participant, self.args.task)
+            # Create physio figure - handle both physio and ROI modes
+            if physio_preprocessor is not None:
+                # Traditional physio mode: show original physio data and extracted ETCO2
+                physio_container = physio_preprocessor.get_physio_container()
+                output_generator.create_physio_figure(physio_container, etco2_container, participant, self.args.task)
+            else:
+                # ROI mode: create a specialized figure showing ROI probe
+                output_generator.create_roi_probe_figure(etco2_container, participant, self.args.task, self.config)
+                # Also create ROI visualization showing the ROI on mean BOLD
+                output_generator.create_roi_visualization_figure(etco2_container, bold_container, participant, self.args.task, self.config)
             
             # Save global signal (unnormalized)
             output_generator.save_global_signal(global_signal_container, participant, self.args.task, self.args.space)
@@ -227,7 +246,8 @@ class Pipeline:
                 bold_container=bold_container,
                 participant=participant,
                 task=self.args.task,
-                space=self.args.space
+                space=self.args.space,
+                probe_container=etco2_container
             )
             self.logger.info("CVR maps saved successfully")
             
@@ -250,7 +270,8 @@ class Pipeline:
                 bold_container=bold_container,
                 participant=participant,
                 task=self.args.task,
-                space=self.args.space
+                space=self.args.space,
+                probe_container=etco2_container
             )
             self.logger.info("4D regressor map saved successfully")
 
@@ -260,7 +281,8 @@ class Pipeline:
                 delay_results=delay_results,
                 cvr_results=cvr_results,
                 bold_container=bold_container,
-                participant=participant
+                participant=participant,
+                probe_container=etco2_container
             )
             self.logger.info("Histogram statistics generated successfully")
 
@@ -276,12 +298,14 @@ class Pipeline:
             )
             
             # Prepare report data
+            physio_results = {'etco2_container': etco2_container}
+            if physio_preprocessor is not None:
+                physio_container = physio_preprocessor.get_physio_container()
+                physio_results['physio_container'] = physio_container
+            
             report_data = {
                 'global_delay': global_delay,
-                'physio_results': {
-                    'etco2_container': etco2_container,
-                    'physio_container': physio_container
-                },
+                'physio_results': physio_results,
                 'bold_results': {
                     'bold_container': bold_container,
                     'normalized_bold_container': normalized_bold_container,
@@ -407,7 +431,7 @@ class Pipeline:
         self.logger.warning("Only participant level analysis is supported. Exiting.")
         sys.exit(1)
     
-    def _generate_histogram_statistics(self, delay_results, cvr_results, bold_container, participant):
+    def _generate_histogram_statistics(self, delay_results, cvr_results, bold_container, participant, probe_container=None):
         """
         Generate histogram plots and statistical summaries for delay and CVR maps.
         
@@ -523,6 +547,10 @@ IQR: [{stats['delay_stats']['q25']:.2f}, {stats['delay_stats']['q75']:.2f}]s"""
                     'n_voxels': int(len(cvr_values))
                 }
                 
+                # Determine appropriate units based on probe type
+                is_roi_probe = probe_container and getattr(probe_container, 'probe_type', 'etco2') == 'roi_probe'
+                cvr_units = 'arbitrary units' if is_roi_probe else '%BOLD/mmHg'
+                
                 # Generate CVR histogram
                 fig, ax = plt.subplots(1, 1, figsize=(8, 6))
                 n_bins = min(50, int(np.sqrt(len(cvr_values))))
@@ -530,7 +558,7 @@ IQR: [{stats['delay_stats']['q25']:.2f}, {stats['delay_stats']['q75']:.2f}]s"""
                 ax.axvline(stats['cvr_stats']['mean'], color='red', linestyle='--', linewidth=2, label=f"Mean: {stats['cvr_stats']['mean']:.4f}")
                 ax.axvline(stats['cvr_stats']['median'], color='orange', linestyle='--', linewidth=2, label=f"Median: {stats['cvr_stats']['median']:.4f}")
                 
-                ax.set_xlabel('CVR (%BOLD/mmHg)', fontsize=12)
+                ax.set_xlabel(f'CVR ({cvr_units})', fontsize=12)
                 ax.set_ylabel('Number of Voxels', fontsize=12)
                 ax.set_title(f'Distribution of Cerebrovascular Reactivity\n(n = {stats["cvr_stats"]["n_voxels"]:,} brain voxels)', fontsize=14, weight='bold')
                 ax.legend()

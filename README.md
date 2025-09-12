@@ -25,10 +25,11 @@ The pipeline generates quantitative maps of:
 ### Core Analysis
 - **BIDS-compatible** data handling and organization
 - **Physiological signal processing** with ETCO₂ extraction and peak detection
+- **ROI-based probe analysis** as alternative to physiological recordings
 - **BOLD preprocessing** with AROMA-based denoising and refinement
 - **Cross-correlation analysis** for optimal delay mapping
 - **Global signal analysis** with physiological delay correction
-- **Independent Component (IC) classification** with ETCO₂ correlation analysis
+- **Independent Component (IC) classification** with ETCO₂/ROI correlation analysis
 
 ### Advanced Processing
 - **4-step denoising pipeline**: AROMA refinement → Non-aggressive denoising → Temporal filtering → Spatial smoothing
@@ -49,6 +50,7 @@ The pipeline generates quantitative maps of:
 
 1. **BIDS-formatted dataset** with functional MRI data
 2. **Physiological recordings** (CO₂ traces) during gas challenge
+   - *OR alternatively: ROI-based probe analysis (when physiological data unavailable)*
 3. **fMRIPrep derivatives** (preprocessed BOLD data and brain masks)
 
 ### System Requirements
@@ -242,6 +244,131 @@ docker compose run --rm cvrmap \
 | `--derivatives` | Pipeline derivatives | `--derivatives fmriprep=/path` |
 | `--config` | Custom configuration | `--config config.yaml` |
 | `--debug-level` | Verbosity (0=info, 1=debug) | `--debug-level 1` |
+| `--roi-probe` | Enable ROI-based probe mode | `--roi-probe` |
+| `--roi-coordinates` | ROI center coordinates (mm) | `--roi-coordinates 0 -52 26` |
+| `--roi-radius` | ROI radius (mm) | `--roi-radius 6.0` |
+| `--roi-mask` | Path to ROI mask file | `--roi-mask /path/to/mask.nii.gz` |
+| `--roi-atlas` | Path to atlas file | `--roi-atlas /path/to/atlas.nii.gz` |
+| `--roi-region-id` | Region ID in atlas | `--roi-region-id 1001` |
+
+## 🧠 ROI-Based Probe Analysis
+
+CVRmap supports ROI-based probe analysis as an alternative to physiological recordings. This feature is useful when physiological data is unavailable or when analyzing specific vascular territories.
+
+### Overview
+
+Instead of using end-tidal CO₂ (ETCO₂) from breathing recordings, the ROI probe feature:
+
+1. **Extracts a time-series signal** from a specified brain region (ROI)
+2. **Averages BOLD signal** across all voxels within the ROI
+3. **Uses this signal as a probe** for CVR analysis
+4. **Applies identical processing** (cross-correlation, delay mapping, CVR computation)
+
+### ROI Definition Methods
+
+#### 1. Spherical Coordinates
+
+Define a spherical ROI around specific coordinates:
+
+```bash
+# Using posterior cingulate cortex as probe
+cvrmap /data/bids /data/output participant \
+    --participant-label 01 \
+    --task gas \
+    --roi-probe \
+    --roi-coordinates 0 -52 26 \
+    --roi-radius 6.0
+```
+
+#### 2. Binary Mask
+
+Use a pre-defined binary mask:
+
+```bash
+cvrmap /data/bids /data/output participant \
+    --participant-label 01 \
+    --task gas \
+    --roi-probe \
+    --roi-mask /path/to/roi_mask.nii.gz
+```
+
+#### 3. Atlas Region
+
+Extract from a specific atlas region:
+
+```bash
+cvrmap /data/bids /data/output participant \
+    --participant-label 01 \
+    --task gas \
+    --roi-probe \
+    --roi-atlas /opt/fsl/data/atlases/HarvardOxford/HarvardOxford-sub-maxprob-thr0-1mm.nii.gz \
+    --roi-region-id 13
+```
+
+### Configuration File Approach
+
+Create a configuration file for ROI probe settings:
+
+```yaml
+# roi_config.yaml
+roi_probe:
+  enabled: true
+  method: coordinates
+  coordinates_mm: [0, -52, 26]  # Posterior cingulate cortex
+  radius_mm: 6.0
+
+# Standard CVRmap settings
+physio:
+  raw_co2_light_smoothing: 0.06
+delay:
+  delay_correlation_threshold: 0.6
+bold:
+  temporal_filtering:
+    sigma: 63.0
+```
+
+Run with configuration:
+```bash
+cvrmap /data/bids /data/output participant \
+    --participant-label 01 \
+    --task gas \
+    --config roi_config.yaml
+```
+
+### Output Differences
+
+When using ROI probe mode, outputs include:
+
+#### Additional Files
+- **`*_desc-roiprobe_bold.tsv.gz`** - ROI probe timeseries (replaces ETCO₂)
+- **`*_desc-roiprobe.png`** - ROI probe signal figure
+- **`*_desc-roivisualization.png`** - ROI visualization on mean BOLD image
+
+#### Report Adaptations
+- Navigation shows "ROI Probe" instead of "Physiological"
+- ROI extraction details and visualization
+- Units are "arbitrary units" instead of "%BOLD/mmHg"
+- ROI-specific processing descriptions
+
+### Quality Considerations
+
+#### ROI Selection Criteria
+- **Robust CVR response** in your population
+- **Sufficient size** (>20 voxels recommended)
+- **Within brain tissue** (not CSF or skull)
+- **Avoid motion-prone areas** (e.g., near sinuses)
+
+#### Validation Steps
+1. **Visual inspection** of ROI placement
+2. **Signal quality check** for motion artifacts
+3. **Cross-correlation quality** verification
+4. **Comparison with physiological data** (when available)
+
+#### Limitations
+- **No ground truth CO₂ levels** - relative changes only
+- **ROI choice impacts results** - careful selection required
+- **May be less sensitive** than direct physiological measurements
+- **Region-specific biases** depending on ROI location
 
 ## ⚙️ Configuration
 
@@ -267,6 +394,16 @@ bold:
     sigma: 63.0                      # Temporal filter sigma (seconds)
   spatial_smoothing:
     fwhm: 5.0                        # Spatial smoothing FWHM (mm)
+
+# ROI-based probe configuration (alternative to physiological recordings)
+roi_probe:
+  enabled: false                     # Set to true to enable ROI probe mode
+  method: coordinates                # Options: coordinates, mask, atlas
+  coordinates_mm: [0, 0, 0]         # [x, y, z] coordinates in mm (world space)
+  radius_mm: 6.0                    # Radius for spherical ROI (mm)
+  mask_path: null                   # Path to binary mask file (for mask method)
+  atlas_path: null                  # Path to atlas file (for atlas method)
+  region_id: null                   # Region ID in atlas (for atlas method)
 ```
 
 ### Custom Configuration
@@ -285,6 +422,13 @@ delay:
 bold:
   temporal_filtering:
     sigma: 75.0
+
+# Enable ROI probe with PCC coordinates
+roi_probe:
+  enabled: true
+  method: coordinates
+  coordinates_mm: [0, -52, 26]       # Posterior cingulate cortex
+  radius_mm: 6.0
 ```
 
 ## 📈 Output Structure
@@ -300,12 +444,16 @@ output_dir/
 │   │   ├── sub-01_task-gas_desc-cvrhist.png
 │   │   ├── sub-01_task-gas_desc-globaldelay.png
 │   │   ├── sub-01_task-gas_desc-icclassification.png
-│   │   └── sub-01_task-gas_desc-physio.png
+│   │   ├── sub-01_task-gas_desc-physio.png          # Physiological mode
+│   │   ├── sub-01_task-gas_desc-roiprobe.png        # ROI probe mode
+│   │   └── sub-01_task-gas_desc-roivisualization.png # ROI probe mode
 │   ├── func/                              # Functional derivatives
 │   │   ├── sub-01_task-gas_desc-cvr_bold.nii.gz
 │   │   ├── sub-01_task-gas_desc-delay_bold.nii.gz
 │   │   ├── sub-01_task-gas_desc-correlation_bold.nii.gz
-│   │   └── sub-01_task-gas_desc-denoised_bold.nii.gz
+│   │   ├── sub-01_task-gas_desc-denoised_bold.nii.gz
+│   │   ├── sub-01_task-gas_desc-etco2_bold.tsv.gz   # Physiological mode
+│   │   └── sub-01_task-gas_desc-roiprobe_bold.tsv.gz # ROI probe mode
 │   └── sub-01_task-gas_desc-cvrmap.html   # Interactive report
 └── logs/                                  # Processing logs
 ```
@@ -313,13 +461,15 @@ output_dir/
 ### Key Output Files
 
 #### NIfTI Images
-- **`*_desc-cvr_bold.nii.gz`**: CVR maps (%BOLD/mmHg)
+- **`*_desc-cvr_bold.nii.gz`**: CVR maps (%BOLD/mmHg or arbitrary units for ROI probe)
 - **`*_desc-delay_bold.nii.gz`**: Hemodynamic delay maps (seconds)
 - **`*_desc-correlation_bold.nii.gz`**: Cross-correlation maps
 - **`*_desc-denoised_bold.nii.gz`**: Preprocessed BOLD data
 
 #### Figures
-- **`*_desc-physio.png`**: Physiological signal preprocessing
+- **`*_desc-physio.png`**: Physiological signal preprocessing (physiological mode)
+- **`*_desc-roiprobe.png`**: ROI probe signal timeseries (ROI probe mode)
+- **`*_desc-roivisualization.png`**: ROI visualization on mean BOLD image (ROI probe mode)
 - **`*_desc-globaldelay.png`**: Global signal analysis
 - **`*_desc-icclassification.png`**: Independent component classification
 - **`*_desc-delayhist.png`**: Delay distribution histogram
@@ -343,14 +493,14 @@ The interactive HTML report includes:
 - Data quality metrics
 - Software versions and citations
 
-### 2. Physiological Analysis
-- CO₂ signal preprocessing
-- Peak detection and baseline correction
+### 2. Probe Analysis
+- **Physiological mode**: CO₂ signal preprocessing, peak detection, and baseline correction
+- **ROI probe mode**: ROI extraction, signal timeseries, and ROI visualization
 - Signal quality assessment
 
 ### 3. Denoising Pipeline
 - AROMA component analysis
-- IC classification with ETCO₂ correlation
+- IC classification with ETCO₂/ROI probe correlation
 - Denoising step visualization
 
 ### 4. Global Delay Analysis
@@ -418,11 +568,17 @@ Please also cite the relevant software and pipelines used in preprocessing:
    - Verify BIDS compliance
    - Check sampling frequency in JSON
 
-3. **Memory issues**:
+3. **ROI probe issues**:
+   - **"ROI contains no brain voxels"**: Check coordinates are in world space (mm), verify ROI overlaps brain tissue
+   - **"Signal contains many NaN values"**: ROI may be in low-signal area, try different location
+   - **"Very low correlations"**: ROI may not show strong CVR response, consider alternative ROI
+   - **Shape mismatch errors**: Automatically handled with nilearn resampling
+
+4. **Memory issues**:
    - Use Docker with memory limits
    - Process subjects individually
 
-4. **Permission errors (Docker)**:
+5. **Permission errors (Docker)**:
    - Ensure output directory is writable
    - Check user permissions (UID/GID)
 
