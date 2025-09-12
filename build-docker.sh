@@ -4,7 +4,16 @@
 set -e
 
 # Get version from setup.py
-VERSION=$(python -c "import ast; exec(open('setup.py').read()); print(locals()['setup'].__defaults__[0] if hasattr(locals()['setup'], '__defaults__') else '0.1.0')" 2>/dev/null || echo "0.1.0")
+VERSION=$(python -c "
+with open('setup.py', 'r') as f:
+    content = f.read()
+import re
+version_match = re.search(r'version=[\"\'](.*?)[\"\']', content)
+if version_match:
+    print(version_match.group(1))
+else:
+    print('0.1.0')
+" 2>/dev/null || echo "0.1.0")
 
 # Default values
 IMAGE_NAME="arovai/cvrmap"

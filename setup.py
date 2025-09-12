@@ -1,8 +1,8 @@
 from setuptools import setup, find_packages
 
 setup(
-    name='cvrmap',
-    version='4.0.0',
+    name="cvrmap",
+    version="4.0.3",
     packages=find_packages(),
     package_data={
         'cvrmap': ['default_config.yaml', 'data/report_config.yaml'],

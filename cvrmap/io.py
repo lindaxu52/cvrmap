@@ -62,7 +62,7 @@ class OutputGenerator:
 				"GeneratedBy": [
 					{
 						"Name": "cvrmap",
-						"Version": "4.0.0",
+						"Version": "4.0.3",
 						"Description": "Cerebrovascular reactivity mapping pipeline"
 					}
 				],

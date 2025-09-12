@@ -108,7 +108,7 @@ class CVRReportGenerator:
         subject_label = self.participant_id
         task = self.task
         spaces = kwargs.get('space', 'MNI152NLin2009cAsym')
-        version = '4.0.0'  # TODO: get from package metadata
+        version = '4.0.3'  # TODO: get from package metadata
         global_delay = kwargs.get('global_delay', 0.0)
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
@@ -589,12 +589,12 @@ class CVRReportGenerator:
                 <p class="section-subtitle">Quantitative analysis of delay and CVR map distributions</p>
             </div>
             <div class="section-content">
-                {f'''
+                {('''
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-bottom: 2rem;">
                     <!-- Delay Statistics -->
                     <div class="summary-card">
                         <h4><i class="fas fa-clock"></i> Hemodynamic Delay Statistics</h4>
-                        {"""
+                        ''' + ("""
                         <div style="margin-top: 1rem;">
                             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
                                 <div style="text-align: center; padding: 0.75rem; background: #e8f4f8; border-radius: 6px;">
@@ -628,13 +628,13 @@ class CVRReportGenerator:
                             max_val=histogram_stats['delay_stats']['max'],
                             q25=histogram_stats['delay_stats']['q25'],
                             q75=histogram_stats['delay_stats']['q75']
-                        ) if histogram_stats.get('delay_stats') else "<p style='color: #666; font-style: italic;'>Delay statistics not available</p>"}
+                        ) if histogram_stats.get('delay_stats') else "<p style='color: #666; font-style: italic;'>Delay statistics not available</p>") + '''
                     </div>
                     
                     <!-- CVR Statistics -->
                     <div class="summary-card">
                         <h4><i class="fas fa-brain"></i> CVR Statistics</h4>
-                        {"""
+                        ''' + ("""
                         <div style="margin-top: 1rem;">
                             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
                                 <div style="text-align: center; padding: 0.75rem; background: #d4edda; border-radius: 6px;">
@@ -668,10 +668,10 @@ class CVRReportGenerator:
                             max_val=histogram_stats['cvr_stats']['max'],
                             q25=histogram_stats['cvr_stats']['q25'],
                             q75=histogram_stats['cvr_stats']['q75']
-                        ) if histogram_stats.get('cvr_stats') else "<p style='color: #666; font-style: italic;'>CVR statistics not available</p>"}
+                        ) if histogram_stats.get('cvr_stats') else "<p style='color: #666; font-style: italic;'>CVR statistics not available</p>") + '''
                     </div>
                 </div>
-                ''' if histogram_stats else ''}
+                ''') if histogram_stats else ''}
                 
                 <!-- Histogram Figures -->
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem;">
