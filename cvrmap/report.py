@@ -589,7 +589,7 @@ class CVRReportGenerator:
                 <p class="section-subtitle">Quantitative analysis of delay and CVR map distributions</p>
             </div>
             <div class="section-content">
-                {('''
+                {('''''
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-bottom: 2rem;">
                     <!-- Delay Statistics -->
                     <div class="summary-card">
@@ -671,7 +671,7 @@ class CVRReportGenerator:
                         ) if histogram_stats.get('cvr_stats') else "<p style='color: #666; font-style: italic;'>CVR statistics not available</p>") + '''
                     </div>
                 </div>
-                ''') if histogram_stats else ''}
+                ''''' + '') if histogram_stats else ''}
                 
                 <!-- Histogram Figures -->
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem;">

@@ -1,7 +1,7 @@
 # CVRmap Docker Image v4.0.3
 # Single-stage build for simplicity
 
-FROM python:3.11-slim
+FROM python:3.12.11-slim
 
 # Build argument for version
 ARG CVRMAP_VERSION=4.0.3
@@ -37,7 +37,7 @@ COPY cvrmap/ ./cvrmap/
 COPY data/ ./data/
 
 # Install CVRmap and dependencies
-RUN pip install --no-cache-dir --trusted-host pypi.org --trusted-host pypi.python.org --trusted-host files.pythonhosted.org . && \
+RUN pip install -U --no-cache-dir --trusted-host pypi.org --trusted-host pypi.python.org --trusted-host files.pythonhosted.org . && \
     apt-get purge -y build-essential gcc g++ gfortran && \
     apt-get autoremove -y && \
     rm -rf /var/lib/apt/lists/*
