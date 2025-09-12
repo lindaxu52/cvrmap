@@ -128,6 +128,143 @@ class OutputGenerator:
 		self.config = config or {}
 		self._ensure_dataset_description()
 	
+	def _create_bids_paths(self, participant, data_type, filename_base):
+		"""
+		Create BIDS-compliant directory structure and file paths.
+		
+		Parameters:
+		-----------
+		participant : str
+			Participant ID.
+		data_type : str
+			Data type (e.g., 'func', 'physio', 'figures').
+		filename_base : str
+			Base filename without extension.
+			
+		Returns:
+		--------
+		tuple
+			(output_dir, nii_path, json_path, tsv_path) where applicable paths are None if not needed.
+		"""
+		participant_dir = f"sub-{participant}"
+		output_data_dir = os.path.join(self.output_dir, participant_dir, data_type)
+		os.makedirs(output_data_dir, exist_ok=True)
+		
+		nii_path = os.path.join(output_data_dir, f"{filename_base}.nii.gz")
+		json_path = os.path.join(output_data_dir, f"{filename_base}.json")
+		tsv_path = os.path.join(output_data_dir, f"{filename_base}.tsv.gz")
+		png_path = os.path.join(output_data_dir, f"{filename_base}.png")
+		
+		return output_data_dir, nii_path, json_path, tsv_path, png_path
+	
+	def _create_standard_sidecar_base(self, description, units, space, task, data_type):
+		"""
+		Create a standard base JSON sidecar with common fields.
+		
+		Parameters:
+		-----------
+		description : str
+			Description of the data.
+		units : str
+			Units of the data.
+		space : str
+			Space name.
+		task : str
+			Task name.
+		data_type : str
+			Type of data.
+			
+		Returns:
+		--------
+		dict
+			Base sidecar dictionary.
+		"""
+		return {
+			"Description": description,
+			"Units": units,
+			"Space": space,
+			"DataType": data_type,
+			"TaskName": task
+		}
+	
+	def _setup_lightbox_figure(self, title, figsize=(16, 12)):
+		"""
+		Setup a standard lightbox figure with grid layout.
+		
+		Parameters:
+		-----------
+		title : str
+			Figure title.
+		figsize : tuple
+			Figure size.
+			
+		Returns:
+		--------
+		tuple
+			(fig, gs_inner, ax_cbar, n_rows, n_cols)
+		"""
+		import matplotlib.pyplot as plt
+		from matplotlib.gridspec import GridSpec
+		
+		n_rows, n_cols = 4, 5
+		
+		# Create figure with custom layout: main plot area + colorbar
+		fig = plt.figure(figsize=figsize, facecolor='black')
+		gs = GridSpec(1, 2, width_ratios=[0.95, 0.05], wspace=0.02)
+		
+		# Main plot area for lightbox
+		ax_main = fig.add_subplot(gs[0])
+		ax_main.set_facecolor('black')
+		ax_main.axis('off')
+		
+		# Colorbar area
+		ax_cbar = fig.add_subplot(gs[1])
+		
+		# Create subplot grid within the main area
+		gs_inner = GridSpec(n_rows, n_cols, figure=fig, 
+		                   left=gs[0].get_position(fig).x0,
+		                   right=gs[0].get_position(fig).x1,
+		                   bottom=gs[0].get_position(fig).y0,
+		                   top=gs[0].get_position(fig).y1 - 0.05,  # Leave space for title
+		                   hspace=0.05, wspace=0.05)
+		
+		# Add title
+		fig.suptitle(title, fontsize=16, color='white', y=0.95)
+		
+		return fig, gs_inner, ax_cbar, n_rows, n_cols
+	
+	def _add_baseline_to_sidecar(self, sidecar, probe_container, is_roi_probe=False):
+		"""
+		Add baseline information to sidecar if available.
+		
+		Parameters:
+		-----------
+		sidecar : dict
+			Sidecar dictionary to modify.
+		probe_container : ProbeContainer
+			Container with potential baseline information.
+		is_roi_probe : bool
+			Whether this is an ROI probe.
+		"""
+		if hasattr(probe_container, 'baseline') and probe_container.baseline is not None:
+			baseline_units = probe_container.units if probe_container.units and not is_roi_probe else ("BOLD units" if is_roi_probe else "mmHg")
+			
+			# Determine baseline method from config
+			baseline_method = self.config.get('physio', {}).get('baseline_method', 'peakutils')
+			if baseline_method == 'mean':
+				description = "Baseline probe value computed as the mean of the signal"
+				method = "mean"
+			else:
+				description = "Baseline probe value computed using peakutils baseline estimation"
+				method = "peakutils.baseline"
+			
+			sidecar["BaselineValue"] = {
+				"Value": float(probe_container.baseline),
+				"Units": baseline_units,
+				"Description": description,
+				"Method": method
+			}
+	
 	def _ensure_dataset_description(self):
 		"""
 		Create dataset_description.json in output_dir if it doesn't exist.
@@ -181,25 +318,17 @@ class OutputGenerator:
 		probe_type = getattr(etco2_container, 'probe_type', 'etco2')
 		is_roi_probe = probe_type == 'roi_probe'
 		
-		# Create BIDS directory structure
-		participant_dir = f"sub-{participant}"
+		# Create BIDS paths
 		data_dir = "physio" if not is_roi_probe else "func"  # ROI probes go in func directory
-		output_data_dir = os.path.join(self.output_dir, participant_dir, data_dir)
-		os.makedirs(output_data_dir, exist_ok=True)
-		
-		# Create BIDS filename
 		if is_roi_probe:
 			filename_base = f"sub-{participant}_task-{task}_desc-roiprobe_bold"
 		else:
 			filename_base = f"sub-{participant}_task-{task}_desc-etco2_physio"
 		
-		tsv_path = os.path.join(output_data_dir, f"{filename_base}.tsv.gz")
-		json_path = os.path.join(output_data_dir, f"{filename_base}.json")
+		_, _, json_path, tsv_path, _ = self._create_bids_paths(participant, data_dir, filename_base)
 		
-		# Create time vector
+		# Create time vector and DataFrame
 		time_vector = np.arange(len(etco2_container.data)) / etco2_container.sampling_frequency
-		
-		# Create DataFrame and save as TSV
 		probe_column_name = 'roiprobe' if is_roi_probe else 'etco2'
 		df = pd.DataFrame({
 			'time': time_vector,
@@ -242,14 +371,7 @@ class OutputGenerator:
 			}
 		
 		# Add baseline value if available
-		if hasattr(etco2_container, 'baseline') and etco2_container.baseline is not None:
-			baseline_units = etco2_container.units if etco2_container.units and not is_roi_probe else ("BOLD units" if is_roi_probe else "mmHg")
-			sidecar["BaselineValue"] = {
-				"Value": float(etco2_container.baseline),
-				"Units": baseline_units,
-				"Description": "Baseline probe value computed using peakutils baseline estimation",
-				"Method": "peakutils.baseline"
-			}
+		self._add_baseline_to_sidecar(sidecar, etco2_container, is_roi_probe)
 		
 		with open(json_path, 'w') as f:
 			safe_json_dump(sidecar, f, indent=2)
@@ -627,21 +749,12 @@ class OutputGenerator:
 		import pandas as pd
 		import numpy as np
 		
-		# Create BIDS directory structure
-		participant_dir = f"sub-{participant}"
-		func_dir = "func"
-		output_func_dir = os.path.join(self.output_dir, participant_dir, func_dir)
-		os.makedirs(output_func_dir, exist_ok=True)
-		
-		# Create BIDS filename
+		# Create BIDS paths
 		filename_base = f"sub-{participant}_task-{task}_space-{space}_desc-global_bold"
-		tsv_path = os.path.join(output_func_dir, f"{filename_base}.tsv.gz")
-		json_path = os.path.join(output_func_dir, f"{filename_base}.json")
+		_, _, json_path, tsv_path, _ = self._create_bids_paths(participant, "func", filename_base)
 		
-		# Create time vector
+		# Create time vector and DataFrame
 		time_vector = np.arange(len(global_signal_container.data)) / global_signal_container.sampling_frequency
-		
-		# Create DataFrame and save as TSV
 		df = pd.DataFrame({
 			'time': time_vector,
 			'global_signal': global_signal_container.data
@@ -774,12 +887,6 @@ class OutputGenerator:
 		import numpy as np
 		import nibabel as nib
 		
-		# Create BIDS directory structure
-		participant_dir = f"sub-{participant}"
-		func_dir = "func"
-		output_func_dir = os.path.join(self.output_dir, participant_dir, func_dir)
-		os.makedirs(output_func_dir, exist_ok=True)
-		
 		# Extract results
 		delay_maps = delay_results['delay_maps']
 		correlation_maps = delay_results['correlation_maps']
@@ -790,24 +897,21 @@ class OutputGenerator:
 		if masked_delay_maps is None or correlation_maps is None:
 			raise ValueError("Masked delay maps and correlation maps must not be None")
 		
-		# Create BIDS filenames - save masked delay map
+		# Create BIDS paths
 		delay_base = f"sub-{participant}_task-{task}_space-{space}_desc-delaymasked_bold"
 		correlation_base = f"sub-{participant}_task-{task}_space-{space}_desc-correlation_bold"
 		
-		delay_nii_path = os.path.join(output_func_dir, f"{delay_base}.nii.gz")
-		delay_json_path = os.path.join(output_func_dir, f"{delay_base}.json")
-		correlation_nii_path = os.path.join(output_func_dir, f"{correlation_base}.nii.gz")
-		correlation_json_path = os.path.join(output_func_dir, f"{correlation_base}.json")
+		_, delay_nii_path, delay_json_path, _, _ = self._create_bids_paths(participant, "func", delay_base)
+		_, correlation_nii_path, correlation_json_path, _, _ = self._create_bids_paths(participant, "func", correlation_base)
 		
-		# Save masked delay map as NIfTI
-		delay_img = nib.Nifti1Image(masked_delay_maps, normalized_bold_container.affine)  # Do not copy original header to allow for NaN values
+		# Save maps as NIfTI
+		delay_img = nib.Nifti1Image(masked_delay_maps, normalized_bold_container.affine)
 		nib.save(delay_img, delay_nii_path)
 		
-		# Save correlation map as NIfTI
 		correlation_img = nib.Nifti1Image(correlation_maps, normalized_bold_container.affine, normalized_bold_container.header)
 		nib.save(correlation_img, correlation_nii_path)
 		
-		# Create JSON sidecar for masked delay map
+		# Create JSON sidecars using helper function
 		delay_description = f"Voxel-wise optimal delay map showing temporal delays that maximize correlation between BOLD signal and shifted ETCO2 probe, masked by correlation threshold (≥{correlation_threshold})"
 		processing_description = f"Each voxel contains the delay (in seconds) that produced the maximum absolute correlation with the shifted ETCO2 probe signal. Only voxels with correlation ≥{correlation_threshold} are included; others are set to NaN"
 		
@@ -815,25 +919,21 @@ class OutputGenerator:
 			delay_description += f", relative to global delay baseline of {global_delay:.3f}s"
 			processing_description += f". Delays are expressed relative to the global delay ({global_delay:.3f}s), so positive values indicate delays longer than the global delay, and negative values indicate delays shorter than the global delay"
 		
-		delay_sidecar = {
-			"Description": delay_description,
-			"Units": "s",
-			"Space": space,
+		delay_sidecar = self._create_standard_sidecar_base(delay_description, "s", space, task, "delay")
+		delay_sidecar.update({
 			"DelayRange": {
 				"Minimum": float(np.min(delay_range)),
 				"Maximum": float(np.max(delay_range)),
 				"Description": "Range of delays tested in seconds"
 			},
 			"ProcessingDescription": processing_description,
-			"DataType": "delay",
-			"TaskName": task,
 			"NumberOfDelayConditions": len(delay_range),
 			"DelayStep": float(delay_range[1] - delay_range[0]) if len(delay_range) > 1 else 1.0,
 			"CorrelationMask": {
 				"Threshold": float(correlation_threshold),
 				"Description": f"Only voxels with absolute correlation ≥{correlation_threshold} are included in the delay map"
 			}
-		}
+		})
 		
 		if global_delay is not None:
 			delay_sidecar["GlobalDelayReference"] = {
@@ -842,22 +942,19 @@ class OutputGenerator:
 				"Description": "Global delay value used as reference point. Delay map values are relative to this baseline."
 			}
 		
-		# Create JSON sidecar for correlation map
-		correlation_sidecar = {
-			"Description": "Voxel-wise maximum correlation map showing the highest correlation between BOLD signal and shifted ETCO2 probe across all tested delays",
-			"Units": "correlation coefficient",
-			"Space": space,
+		correlation_sidecar = self._create_standard_sidecar_base(
+			"Voxel-wise maximum correlation map showing the highest correlation between BOLD signal and shifted ETCO2 probe across all tested delays",
+			"correlation coefficient", space, task, "correlation")
+		correlation_sidecar.update({
 			"CorrelationRange": {
 				"Minimum": -1.0,
 				"Maximum": 1.0,
 				"Description": "Theoretical range of correlation coefficients"
 			},
 			"ProcessingDescription": "Each voxel contains the maximum absolute correlation coefficient achieved across all tested delays with the ETCO2 probe signal",
-			"DataType": "correlation",
-			"TaskName": task,
 			"NumberOfDelayConditions": len(delay_range),
 			"DelayStep": float(delay_range[1] - delay_range[0]) if len(delay_range) > 1 else 1.0
-		}
+		})
 		
 		# Save JSON sidecars
 		with open(delay_json_path, 'w') as f:
@@ -904,13 +1001,10 @@ class OutputGenerator:
 		import matplotlib.colors as mcolors
 		import nibabel as nib
 		import numpy as np
-		from matplotlib.gridspec import GridSpec
 		
 		# Create figures directory
-		participant_dir = f"sub-{participant}"
-		figures_dir = "figures"
-		output_figures_dir = os.path.join(self.output_dir, participant_dir, figures_dir)
-		os.makedirs(output_figures_dir, exist_ok=True)
+		_, _, _, _, fig_path = self._create_bids_paths(participant, "figures", 
+		                                              f"sub-{participant}_task-{task}_space-{space}_desc-delaymasked")
 		
 		# Load the delay map
 		delay_img = nib.load(delay_nii_path)
@@ -920,28 +1014,9 @@ class OutputGenerator:
 		z_min, z_max = 10, delay_img.shape[2] - 10  # Avoid empty slices at edges
 		slice_indices = np.linspace(z_min, z_max, 20, dtype=int)
 		
-		# Set up grid layout: 4 rows x 5 columns for 20 slices
-		n_rows, n_cols = 4, 5
-		
-		# Create figure with custom layout: main plot area + colorbar
-		fig = plt.figure(figsize=(16, 12), facecolor='black')
-		gs = GridSpec(1, 2, width_ratios=[0.95, 0.05], wspace=0.02)
-		
-		# Main plot area for lightbox
-		ax_main = fig.add_subplot(gs[0])
-		ax_main.set_facecolor('black')
-		ax_main.axis('off')
-		
-		# Colorbar area
-		ax_cbar = fig.add_subplot(gs[1])
-		
-		# Create subplot grid within the main area
-		gs_inner = GridSpec(n_rows, n_cols, figure=fig, 
-		                   left=gs[0].get_position(fig).x0,
-		                   right=gs[0].get_position(fig).x1,
-		                   bottom=gs[0].get_position(fig).y0,
-		                   top=gs[0].get_position(fig).y1 - 0.05,  # Leave space for title
-		                   hspace=0.05, wspace=0.05)
+		# Setup lightbox figure
+		title = f'Masked Delay Map - Subject {participant}, Task {task}'
+		fig, gs_inner, ax_cbar, n_rows, n_cols = self._setup_lightbox_figure(title)
 		
 		# Set colormap and normalization
 		cmap = plt.cm.get_cmap('coolwarm')
@@ -958,17 +1033,12 @@ class OutputGenerator:
 			
 			# Extract and display the slice
 			slice_data = delay_data[:, :, slice_idx]
-			
-			# Rotate slice for proper orientation (neurological convention)
-			slice_data = np.rot90(slice_data, k=1)
-			# Removed np.flipud() to change up/down orientation
-			
-			# Create masked array to handle NaN values
-			masked_slice = np.ma.masked_invalid(slice_data)
+			slice_data = np.rot90(slice_data, k=1)  # Rotate for proper orientation
+			masked_slice = np.ma.masked_invalid(slice_data)  # Handle NaN values
 			
 			# Display the slice
-			im = ax.imshow(masked_slice, cmap=cmap, norm=norm, 
-			              interpolation='nearest', aspect='equal')
+			ax.imshow(masked_slice, cmap=cmap, norm=norm, 
+			         interpolation='nearest', aspect='equal')
 			
 			# Remove axes and add slice number
 			ax.set_xticks([])
@@ -979,17 +1049,8 @@ class OutputGenerator:
 		cbar = plt.colorbar(plt.cm.ScalarMappable(norm=norm, cmap=cmap), cax=ax_cbar)
 		cbar.set_label('Delay (seconds)', rotation=270, labelpad=15, color='white', fontsize=11)
 		cbar.ax.tick_params(colors='white', labelsize=9, width=0.5)
-		# Make colorbar outline thinner and less prominent
 		cbar.outline.set_edgecolor('white')
 		cbar.outline.set_linewidth(0.5)
-		
-		# Add title to the figure
-		fig.suptitle(f'Masked Delay Map - Subject {participant}, Task {task}', 
-		            fontsize=16, color='white', y=0.95)
-		
-		# Save the figure
-		fig_base = f"sub-{participant}_task-{task}_space-{space}_desc-delaymasked"
-		fig_path = os.path.join(output_figures_dir, f"{fig_base}.png")
 		
 		plt.savefig(fig_path, dpi=300, bbox_inches='tight', facecolor='black')
 		plt.close(fig)
@@ -1025,23 +1086,15 @@ class OutputGenerator:
 		import numpy as np
 		import nibabel as nib
 		
-		# Create BIDS directory structure
-		participant_dir = f"sub-{participant}"
-		func_dir = "func"
-		output_func_dir = os.path.join(self.output_dir, participant_dir, func_dir)
-		os.makedirs(output_func_dir, exist_ok=True)
-		
 		# Extract CVR maps
 		cvr_maps = cvr_results['cvr_maps']
 		
 		if cvr_maps is None:
 			raise ValueError("CVR maps must not be None")
 		
-		# Create BIDS filename for CVR map
+		# Create BIDS paths
 		cvr_base = f"sub-{participant}_task-{task}_space-{space}_desc-cvr_bold"
-		
-		cvr_nii_path = os.path.join(output_func_dir, f"{cvr_base}.nii.gz")
-		cvr_json_path = os.path.join(output_func_dir, f"{cvr_base}.json")
+		_, cvr_nii_path, cvr_json_path, _, _ = self._create_bids_paths(participant, "func", cvr_base)
 		
 		# Save CVR map as NIfTI
 		cvr_img = nib.Nifti1Image(cvr_maps, bold_container.affine)
@@ -1061,19 +1114,15 @@ class OutputGenerator:
 			processing_desc = "CVR computed as b1/(b0 + probe_baseline*b1) where b0 and b1 are GLM coefficients from BOLD = b0 + b1*etco2_signal regression"
 			probe_info = "End-tidal CO2 (ETCO2) from physiological recordings"
 		
-		# Create JSON sidecar for CVR map
-		cvr_sidecar = {
-			"Description": description,
-			"Units": units,
-			"Space": space,
+		# Create JSON sidecar using helper function
+		cvr_sidecar = self._create_standard_sidecar_base(description, units, space, task, "cvr")
+		cvr_sidecar.update({
 			"ProcessingDescription": processing_desc,
-			"DataType": "cvr",
-			"TaskName": task,
 			"GLMFormula": "BOLD ~ intercept + probe_signal",
 			"Method": "GeneralLinearModel",
 			"ProbeType": getattr(probe_container, 'probe_type', 'etco2') if probe_container else 'etco2',
 			"ProbeDescription": probe_info
-		}
+		})
 		
 		# Save JSON sidecar
 		with open(cvr_json_path, 'w') as f:
@@ -1118,12 +1167,6 @@ class OutputGenerator:
 		import numpy as np
 		import nibabel as nib
 		
-		# Create BIDS directory structure
-		participant_dir = f"sub-{participant}"
-		func_dir = "func"
-		output_func_dir = os.path.join(self.output_dir, participant_dir, func_dir)
-		os.makedirs(output_func_dir, exist_ok=True)
-		
 		# Extract coefficient maps
 		b0_maps = cvr_results.get('b0_maps')
 		b1_maps = cvr_results.get('b1_maps')
@@ -1131,48 +1174,40 @@ class OutputGenerator:
 		if b0_maps is None or b1_maps is None:
 			raise ValueError("Both b0_maps and b1_maps must be present in cvr_results")
 		
-		# Create BIDS filenames for coefficient maps
+		# Create BIDS paths
 		b0_base = f"sub-{participant}_task-{task}_space-{space}_desc-b0_bold"
 		b1_base = f"sub-{participant}_task-{task}_space-{space}_desc-b1_bold"
 		
-		b0_nii_path = os.path.join(output_func_dir, f"{b0_base}.nii.gz")
-		b0_json_path = os.path.join(output_func_dir, f"{b0_base}.json")
-		b1_nii_path = os.path.join(output_func_dir, f"{b1_base}.nii.gz")
-		b1_json_path = os.path.join(output_func_dir, f"{b1_base}.json")
+		_, b0_nii_path, b0_json_path, _, _ = self._create_bids_paths(participant, "func", b0_base)
+		_, b1_nii_path, b1_json_path, _, _ = self._create_bids_paths(participant, "func", b1_base)
 		
-		# Save b0 map (intercept coefficient) as NIfTI
+		# Save coefficient maps as NIfTI
 		b0_img = nib.Nifti1Image(b0_maps, bold_container.affine)
 		nib.save(b0_img, b0_nii_path)
 		
-		# Save b1 map (slope coefficient) as NIfTI
 		b1_img = nib.Nifti1Image(b1_maps, bold_container.affine)
 		nib.save(b1_img, b1_nii_path)
 		
-		# Create JSON sidecar for b0 map (intercept)
-		b0_sidecar = {
-			"Description": "GLM intercept coefficient (b0) map from regression: BOLD = b0 + b1*probe_signal",
-			"Units": "arbitrary",
-			"Space": space,
+		# Create JSON sidecars using helper function
+		b0_sidecar = self._create_standard_sidecar_base(
+			"GLM intercept coefficient (b0) map from regression: BOLD = b0 + b1*probe_signal",
+			"arbitrary", space, task, "coefficient")
+		b0_sidecar.update({
 			"ProcessingDescription": "Intercept coefficient from voxel-wise GLM regression between BOLD signal and shifted ETCO2 probe signal",
-			"DataType": "coefficient",
-			"TaskName": task,
 			"GLMFormula": "BOLD ~ intercept + probe_signal",
 			"Method": "GeneralLinearModel",
 			"CoefficientType": "intercept"
-		}
+		})
 		
-		# Create JSON sidecar for b1 map (slope)
-		b1_sidecar = {
-			"Description": "GLM slope coefficient (b1) map from regression: BOLD = b0 + b1*probe_signal",
-			"Units": "signal_change_per_probe_unit",
-			"Space": space,
+		b1_sidecar = self._create_standard_sidecar_base(
+			"GLM slope coefficient (b1) map from regression: BOLD = b0 + b1*probe_signal",
+			"signal_change_per_probe_unit", space, task, "coefficient")
+		b1_sidecar.update({
 			"ProcessingDescription": "Slope coefficient from voxel-wise GLM regression between BOLD signal and shifted ETCO2 probe signal",
-			"DataType": "coefficient",
-			"TaskName": task,
 			"GLMFormula": "BOLD ~ intercept + probe_signal",
 			"Method": "GeneralLinearModel",
 			"CoefficientType": "slope"
-		}
+		})
 		
 		# Save JSON sidecars
 		with open(b0_json_path, 'w') as f:
@@ -1218,12 +1253,6 @@ class OutputGenerator:
 		import numpy as np
 		import nibabel as nib
 		
-		# Create BIDS directory structure
-		participant_dir = f"sub-{participant}"
-		func_dir = "func"
-		output_func_dir = os.path.join(self.output_dir, participant_dir, func_dir)
-		os.makedirs(output_func_dir, exist_ok=True)
-		
 		# Extract delay maps and probe data
 		delay_maps = delay_results['delay_maps']
 		shifted_signals, time_delays_seconds = resampled_shifted_probes
@@ -1267,24 +1296,20 @@ class OutputGenerator:
 				shifted_signals, total_brain_voxels, n_jobs
 			)
 		
-		# Create BIDS filename
+		# Create BIDS paths
 		regressor_base = f"sub-{participant}_task-{task}_space-{space}_desc-regressor4d_bold"
-		
-		regressor_nii_path = os.path.join(output_func_dir, f"{regressor_base}.nii.gz")
-		regressor_json_path = os.path.join(output_func_dir, f"{regressor_base}.json")
+		_, regressor_nii_path, regressor_json_path, _, _ = self._create_bids_paths(participant, "func", regressor_base)
 		
 		# Save 4D regressor map as NIfTI
 		regressor_img = nib.Nifti1Image(regressor_4d, bold_container.affine, bold_container.header)
 		nib.save(regressor_img, regressor_nii_path)
 		
-		# Create JSON sidecar
-		regressor_sidecar = {
-			"Description": "4D regressor map where each voxel contains the timecourse of the resampled, optimally-shifted probe signal based on the optimal delay for that voxel",
-			"Units": "probe_units",
-			"Space": space,
+		# Create JSON sidecar using helper function
+		regressor_sidecar = self._create_standard_sidecar_base(
+			"4D regressor map where each voxel contains the timecourse of the resampled, optimally-shifted probe signal based on the optimal delay for that voxel",
+			"probe_units", space, task, "regressor_timecourse")
+		regressor_sidecar.update({
 			"ProcessingDescription": "Each voxel contains the resampled probe signal shifted by the optimal delay determined from cross-correlation analysis. Non-brain voxels are set to NaN.",
-			"DataType": "regressor_timecourse",
-			"TaskName": task,
 			"NumberOfTimepoints": int(n_timepoints),
 			"NumberOfDelayConditions": int(n_delays),
 			"DelayRange": {
@@ -1294,7 +1319,7 @@ class OutputGenerator:
 			},
 			"SpatialReference": "Each voxel uses its individually optimal delay from delay mapping analysis",
 			"ProbeType": getattr(probe_container, 'probe_type', 'etco2') if probe_container else 'etco2'
-		}
+		})
 		
 		# Save JSON sidecar
 		with open(regressor_json_path, 'w') as f:
@@ -1392,13 +1417,10 @@ class OutputGenerator:
 		import matplotlib.colors as mcolors
 		import nibabel as nib
 		import numpy as np
-		from matplotlib.gridspec import GridSpec
 		
 		# Create figures directory
-		participant_dir = f"sub-{participant}"
-		figures_dir = "figures"
-		output_figures_dir = os.path.join(self.output_dir, participant_dir, figures_dir)
-		os.makedirs(output_figures_dir, exist_ok=True)
+		_, _, _, _, fig_path = self._create_bids_paths(participant, "figures", 
+		                                              f"sub-{participant}_task-{task}_space-{space}_desc-cvr")
 		
 		# Load the CVR map
 		cvr_img = nib.load(cvr_nii_path)
@@ -1408,28 +1430,9 @@ class OutputGenerator:
 		z_min, z_max = 10, cvr_img.shape[2] - 10  # Avoid empty slices at edges
 		slice_indices = np.linspace(z_min, z_max, 20, dtype=int)
 		
-		# Set up grid layout: 4 rows x 5 columns for 20 slices
-		n_rows, n_cols = 4, 5
-		
-		# Create figure with custom layout: main plot area + colorbar
-		fig = plt.figure(figsize=(16, 12), facecolor='black')
-		gs = GridSpec(1, 2, width_ratios=[0.95, 0.05], wspace=0.02)
-		
-		# Main plot area for lightbox
-		ax_main = fig.add_subplot(gs[0])
-		ax_main.set_facecolor('black')
-		ax_main.axis('off')
-		
-		# Colorbar area
-		ax_cbar = fig.add_subplot(gs[1])
-		
-		# Create subplot grid within the main area
-		gs_inner = GridSpec(n_rows, n_cols, figure=fig, 
-		                   left=gs[0].get_position(fig).x0,
-		                   right=gs[0].get_position(fig).x1,
-		                   bottom=gs[0].get_position(fig).y0,
-		                   top=gs[0].get_position(fig).y1 - 0.05,  # Leave space for title
-		                   hspace=0.05, wspace=0.05)
+		# Setup lightbox figure
+		title = f'CVR Map - Subject {participant}, Task {task}'
+		fig, gs_inner, ax_cbar, n_rows, n_cols = self._setup_lightbox_figure(title)
 		
 		# Determine probe type for appropriate units and scaling
 		is_roi_probe = probe_container and getattr(probe_container, 'probe_type', 'etco2') == 'roi_probe'
@@ -1440,7 +1443,6 @@ class OutputGenerator:
 		
 		if is_roi_probe:
 			# For ROI probe mode, adjust vmin/vmax to capture central portion of histogram
-			# Remove outliers and use percentile-based scaling
 			valid_data = cvr_data[np.isfinite(cvr_data)]
 			if len(valid_data) > 0:
 				vmin = np.percentile(valid_data, 5)   # 5th percentile
@@ -1465,17 +1467,12 @@ class OutputGenerator:
 			
 			# Extract and display the slice
 			slice_data = cvr_data[:, :, slice_idx]
-			
-			# Rotate slice for proper orientation (neurological convention)
-			slice_data = np.rot90(slice_data, k=1)
-			# Removed np.flipud() to change up/down orientation
-			
-			# Create masked array to handle NaN values
-			masked_slice = np.ma.masked_invalid(slice_data)
+			slice_data = np.rot90(slice_data, k=1)  # Rotate for proper orientation
+			masked_slice = np.ma.masked_invalid(slice_data)  # Handle NaN values
 			
 			# Display the slice
-			im = ax.imshow(masked_slice, cmap=cmap, norm=norm, 
-			              interpolation='nearest', aspect='equal')
+			ax.imshow(masked_slice, cmap=cmap, norm=norm, 
+			         interpolation='nearest', aspect='equal')
 			
 			# Remove axes and add slice number
 			ax.set_xticks([])
@@ -1486,17 +1483,8 @@ class OutputGenerator:
 		cbar = plt.colorbar(plt.cm.ScalarMappable(norm=norm, cmap=cmap), cax=ax_cbar)
 		cbar.set_label(colorbar_label, rotation=270, labelpad=15, color='white', fontsize=11)
 		cbar.ax.tick_params(colors='white', labelsize=9, width=0.5)
-		# Make colorbar outline thinner and less prominent
 		cbar.outline.set_edgecolor('white')
 		cbar.outline.set_linewidth(0.5)
-		
-		# Add title to the figure
-		fig.suptitle(f'CVR Map - Subject {participant}, Task {task}', 
-		            fontsize=16, color='white', y=0.95)
-		
-		# Save the figure
-		fig_base = f"sub-{participant}_task-{task}_space-{space}_desc-cvr"
-		fig_path = os.path.join(output_figures_dir, f"{fig_base}.png")
 		
 		plt.savefig(fig_path, dpi=300, bbox_inches='tight', facecolor='black')
 		plt.close(fig)
@@ -1506,38 +1494,7 @@ class OutputGenerator:
 		
 		return fig_path
 
-	def _fill_regressor_4d_sequential(self, regressor_4d, brain_mask, x, y, z, delay_maps, 
-	                                  time_delays_seconds, shifted_signals, total_brain_voxels):
-		"""Sequential processing for 4D regressor map generation"""
-		import numpy as np
-		
-		voxel_count = 0
-		
-		for i in range(x):
-			for j in range(y):
-				for k in range(z):
-					if brain_mask[i, j, k]:
-						# Get optimal delay for this voxel
-						optimal_delay = delay_maps[i, j, k]
-						
-						# Skip if delay is NaN (masked voxel)
-						if np.isnan(optimal_delay):
-							continue
-						
-						# Find the closest delay in our time_delays_seconds array
-						delay_idx = np.argmin(np.abs(time_delays_seconds - optimal_delay))
-						
-						# Extract the corresponding shifted probe signal
-						regressor_4d[i, j, k, :] = shifted_signals[delay_idx, :]
-						
-						voxel_count += 1
-						
-						# Progress logging
-						if self.logger and voxel_count % 20000 == 0:
-							progress = (voxel_count / total_brain_voxels) * 100
-							self.logger.debug(f"Processed {voxel_count:,}/{total_brain_voxels:,} voxels ({progress:.1f}%) for 4D regressor map")
-		
-		return voxel_count
+
 
 	def _fill_regressor_4d_parallel(self, regressor_4d, brain_mask, x, y, z, delay_maps,
 	                                time_delays_seconds, shifted_signals, total_brain_voxels, n_jobs):

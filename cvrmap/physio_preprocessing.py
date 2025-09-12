@@ -108,10 +108,21 @@ class PhysioPreprocessor:
             layout=container.layout
         )
         
-        # Compute and store baseline value immediately using peakutils
-        import peakutils
-        probe_baseline_array = peakutils.baseline(etco2)
-        etco2_container.baseline = np.mean(probe_baseline_array)  # Store baseline in container
+        # Compute and store baseline value using the configured method
+        baseline_method = self.config.get('physio', {}).get('baseline_method', 'peakutils')
+        
+        if baseline_method == 'mean':
+            # Use the mean of the signal as baseline (recommended for resting-state)
+            etco2_container.baseline = np.mean(etco2)
+            if self.logger:
+                self.logger.info(f"Computed baseline using mean method: {etco2_container.baseline:.3f}")
+        else:
+            # Use peakutils to detect baseline from signal troughs (default, recommended for gas challenge)
+            import peakutils
+            probe_baseline_array = peakutils.baseline(etco2)
+            etco2_container.baseline = np.mean(probe_baseline_array)  # Store baseline in container
+            if self.logger:
+                self.logger.info(f"Computed baseline using peakutils method: {etco2_container.baseline:.3f}")
         
         return etco2_container
 

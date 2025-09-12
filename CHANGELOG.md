@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.3.0] - 2025-09-12
+
+### Added
+- **Baseline Computation Methods**: Configurable probe baseline computation
+  - **Mean method**: Uses signal mean as baseline (recommended for resting-state)
+  - **PeakUtils method**: Uses signal trough detection for baseline (default, recommended for gas challenge)
+  - **CLI option**: `--baseline-method` to specify computation method
+  - **Configuration support**: `baseline_method` setting in YAML configuration files
+  - **Task-specific warnings**: Automatic warnings for resting-state tasks using peakutils method
+- **Resting-State CVR Support**: Enhanced support for CVR analysis of resting-state data
+  - Improved baseline estimation for spontaneous CO₂ fluctuations
+  - Task-specific recommendations and warnings
+  - Documentation for resting-state CVR workflows
+
+### Enhanced
+- **Comprehensive Documentation**: Updated README with baseline computation methods and usage examples
+- **BIDS Metadata**: Enhanced JSON sidecars with baseline computation method information
+- **Logging**: Improved logging for baseline computation method selection and values
+
+### Technical Improvements
+- Enhanced PhysioPreprocessor with configurable baseline computation methods
+- Enhanced ROIProbeExtractor with configurable baseline computation for all ROI methods
+- Enhanced OutputGenerator with dynamic baseline method documentation in BIDS sidecars
+- Backward compatibility maintained with peakutils as default method
+
 ## [4.2.0] - 2025-09-12
 
 ### Added

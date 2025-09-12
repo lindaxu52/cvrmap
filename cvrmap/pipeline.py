@@ -333,7 +333,11 @@ class Pipeline:
         """
         Check that for each participant and the selected task, a _physio file exists in bids_dir.
         Only keep participants with physio files in self.args.participant_label.
+        
+        Note: This check is bypassed when ROI probe mode is enabled, as ROI probe mode
+        extracts signals from brain regions instead of requiring physiological recordings.
         """
+        self.logger.info("Checking for physiological files (required for standard CVR analysis)")
         missing = []
         valid_with_physio = []
         for subj in self.args.participant_label:
@@ -377,7 +381,13 @@ class Pipeline:
         spaces = layout.get_spaces()
         self.spaces = spaces
         self._check_spaces(spaces)
-        self._check_physio()
+        
+        # Only check for physiological files if ROI probe mode is not enabled
+        roi_probe_enabled = self.config.get('roi_probe', {}).get('enabled', False)
+        if not roi_probe_enabled:
+            self._check_physio()
+        else:
+            self.logger.info("ROI probe mode enabled - skipping physiological file check")
 
     def _check_participants(self, subjects):
         import sys
