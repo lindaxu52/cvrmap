@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="cvrmap",
-    version="4.1.0",
+    version="4.2.0",
     packages=find_packages(),
     package_data={
         'cvrmap': ['default_config.yaml', 'data/report_config.yaml'],
@@ -29,6 +29,7 @@ setup(
         # Signal processing and analysis
         'scikit-learn>=1.0.0',
         'peakutils>=1.3.0',
+        'joblib>=1.0.0',  # For parallel processing
         
         # Visualization
         'matplotlib>=3.4.0',

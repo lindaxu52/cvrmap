@@ -99,7 +99,7 @@ class Pipeline:
             # Create OutputGenerator and save all results
             self.logger.info(f"Saving results for participant: {participant}")
             from .io import OutputGenerator
-            output_generator = OutputGenerator(self.args.output_dir, self.logger)
+            output_generator = OutputGenerator(self.args.output_dir, self.logger, self.config)
             
             # Save ETCO2 data
             output_generator.save_etco2_data(etco2_container, participant, self.args.task)

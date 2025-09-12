@@ -16,6 +16,9 @@ bold:
   spatial_smoothing:
     fwhm: 5.0  # Full Width at Half Maximum for spatial smoothing in mm
 
+# Parallel processing configuration
+n_jobs: -1  # Number of parallel jobs (-1 = use all available CPUs, 1 = disable parallelization)
+
 # ROI-based probe extraction (alternative to physiological recordings)
 # This feature is useful when physiological data is not available or of poor quality.
 # It extracts a probe signal from a specified brain region instead of using ETCO2.

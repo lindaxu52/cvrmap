@@ -1,6 +1,10 @@
 import argparse
 from . import __version__
 
+# Set matplotlib backend to non-GUI to avoid tkinter issues in parallel processing
+import matplotlib
+matplotlib.use('Agg')
+
 def main():
     def check_derivatives(derivatives, logger):
         import os
@@ -36,6 +40,10 @@ def main():
         help='Other pipeline derivatives in the form name=/path/to/derivatives. Example: --derivatives fmriprep=/path/to/fmriprep/derivatives'
     )
     parser.add_argument('--version', action='version', version=f'cvrmap {__version__}')
+    
+    # Parallel processing option
+    parser.add_argument('--n-jobs', type=int, default=-1,
+                       help='Number of parallel jobs for voxel processing. -1 uses all available CPUs, 1 disables parallelization (default: -1)')
     
     # ROI probe options
     parser.add_argument('--roi-probe', action='store_true', help='Enable ROI-based probe instead of physiological recordings')
@@ -88,6 +96,9 @@ def main():
 
     from .io import process_config
     config = process_config(user_config_path=args.config)
+    
+    # Add parallel processing configuration
+    config['n_jobs'] = args.n_jobs
     
     # Handle ROI probe command line arguments
     if args.roi_probe:

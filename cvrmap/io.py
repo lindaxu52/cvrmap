@@ -47,6 +47,61 @@ def process_config(user_config_path=None, default_config_path=None):
 	return config
 
 
+def _process_regressor_voxel(voxel_coord, delay_maps, time_delays_seconds, shifted_signals):
+	"""Standalone worker function for single voxel regressor processing"""
+	import numpy as np
+	import os
+	
+	# Set environment variables to prevent GUI issues in workers
+	os.environ['MPLBACKEND'] = 'Agg'
+	os.environ['QT_QPA_PLATFORM'] = 'offscreen'
+	
+	i, j, k = voxel_coord
+	
+	# Get optimal delay for this voxel
+	optimal_delay = delay_maps[i, j, k]
+	
+	# Skip if delay is NaN (masked voxel)
+	if np.isnan(optimal_delay):
+		return i, j, k, None
+	
+	# Find the closest delay in our time_delays_seconds array
+	delay_idx = np.argmin(np.abs(time_delays_seconds - optimal_delay))
+	
+	# Return the shifted probe signal for this voxel
+	return i, j, k, shifted_signals[delay_idx, :]
+
+
+def _process_regressor_voxel_chunk(voxel_chunk, delay_maps, time_delays_seconds, shifted_signals):
+	"""Standalone worker function for chunked regressor processing"""
+	import numpy as np
+	import os
+	
+	# Set environment variables to prevent GUI issues in workers
+	os.environ['MPLBACKEND'] = 'Agg'
+	os.environ['QT_QPA_PLATFORM'] = 'offscreen'
+	
+	results = []
+	for voxel_coord in voxel_chunk:
+		i, j, k = voxel_coord
+		
+		# Get optimal delay for this voxel
+		optimal_delay = delay_maps[i, j, k]
+		
+		# Skip if delay is NaN (masked voxel)
+		if np.isnan(optimal_delay):
+			results.append((i, j, k, None))
+			continue
+		
+		# Find the closest delay in our time_delays_seconds array
+		delay_idx = np.argmin(np.abs(time_delays_seconds - optimal_delay))
+		
+		# Return the shifted probe signal for this voxel
+		results.append((i, j, k, shifted_signals[delay_idx, :]))
+	
+	return results
+
+
 class OutputGenerator:
 	"""
 	Handle how data will be saved to the output directory.
@@ -55,7 +110,7 @@ class OutputGenerator:
 	in a BIDS-compatible derivatives structure.
 	"""
 	
-	def __init__(self, output_dir, logger=None):
+	def __init__(self, output_dir, logger=None, config=None):
 		"""
 		Initialize the OutputGenerator.
 		
@@ -65,9 +120,12 @@ class OutputGenerator:
 			Base output directory for saving results.
 		logger : logging.Logger, optional
 			Logger instance for consistent logging.
+		config : dict, optional
+			Configuration dictionary containing processing parameters.
 		"""
 		self.output_dir = output_dir
 		self.logger = logger
+		self.config = config or {}
 		self._ensure_dataset_description()
 	
 	def _ensure_dataset_description(self):
@@ -1189,30 +1247,25 @@ class OutputGenerator:
 		# Fill each voxel with its optimal regressor timecourse
 		voxel_count = 0
 		total_brain_voxels = np.sum(brain_mask)
+		n_jobs = self.config.get('n_jobs', -1)
 		
-		for i in range(x):
-			for j in range(y):
-				for k in range(z):
-					if brain_mask[i, j, k]:
-						# Get optimal delay for this voxel
-						optimal_delay = delay_maps[i, j, k]
-						
-						# Skip if delay is NaN (masked voxel)
-						if np.isnan(optimal_delay):
-							continue
-						
-						# Find the closest delay in our time_delays_seconds array
-						delay_idx = np.argmin(np.abs(time_delays_seconds - optimal_delay))
-						
-						# Extract the corresponding shifted probe signal
-						regressor_4d[i, j, k, :] = shifted_signals[delay_idx, :]
-						
-						voxel_count += 1
-						
-						# Progress logging
-						if self.logger and voxel_count % 20000 == 0:
-							progress = (voxel_count / total_brain_voxels) * 100
-							self.logger.debug(f"Processed {voxel_count:,}/{total_brain_voxels:,} voxels ({progress:.1f}%) for 4D regressor map")
+		if n_jobs == 1:
+			# Sequential processing (original implementation)
+			if self.logger:
+				self.logger.info("Using sequential processing for 4D regressor map generation")
+			voxel_count = self._fill_regressor_4d_sequential(
+				regressor_4d, brain_mask, x, y, z, delay_maps, time_delays_seconds, 
+				shifted_signals, total_brain_voxels
+			)
+		else:
+			# Parallel processing
+			if self.logger:
+				actual_n_jobs = n_jobs if n_jobs > 0 else None  # None means all CPUs
+				self.logger.info(f"Using parallel processing for 4D regressor map generation (n_jobs={actual_n_jobs})")
+			voxel_count = self._fill_regressor_4d_parallel(
+				regressor_4d, brain_mask, x, y, z, delay_maps, time_delays_seconds, 
+				shifted_signals, total_brain_voxels, n_jobs
+			)
 		
 		# Create BIDS filename
 		regressor_base = f"sub-{participant}_task-{task}_space-{space}_desc-regressor4d_bold"
@@ -1252,6 +1305,68 @@ class OutputGenerator:
 			self.logger.info(f"Processed {voxel_count:,} brain voxels for 4D regressor map")
 		
 		return regressor_nii_path
+
+	def _fill_regressor_4d_sequential(self, regressor_4d, brain_mask, x, y, z, delay_maps, 
+									time_delays_seconds, shifted_signals, total_brain_voxels):
+		"""Sequential 4D regressor filling (original implementation)"""
+		import numpy as np
+		
+		voxel_count = 0
+		
+		for i in range(x):
+			for j in range(y):
+				for k in range(z):
+					if brain_mask[i, j, k]:
+						# Get optimal delay for this voxel
+						optimal_delay = delay_maps[i, j, k]
+						
+						# Skip if delay is NaN (masked voxel)
+						if np.isnan(optimal_delay):
+							continue
+						
+						# Find the closest delay in our time_delays_seconds array
+						delay_idx = np.argmin(np.abs(time_delays_seconds - optimal_delay))
+						
+						# Extract the corresponding shifted probe signal
+						regressor_4d[i, j, k, :] = shifted_signals[delay_idx, :]
+						
+						voxel_count += 1
+						
+						# Progress logging
+						if self.logger and voxel_count % 20000 == 0:
+							progress = (voxel_count / total_brain_voxels) * 100
+							self.logger.debug(f"Processed {voxel_count:,}/{total_brain_voxels:,} voxels ({progress:.1f}%) for 4D regressor map")
+		
+		return voxel_count
+
+	def _fill_regressor_4d_parallel(self, regressor_4d, brain_mask, x, y, z, delay_maps, 
+								   time_delays_seconds, shifted_signals, total_brain_voxels, n_jobs):
+		"""Parallel 4D regressor filling using joblib"""
+		from joblib import Parallel, delayed
+		import numpy as np
+		
+		# Get brain voxel coordinates
+		brain_coords = np.where(brain_mask)
+		brain_voxels = list(zip(brain_coords[0], brain_coords[1], brain_coords[2]))
+		
+		if self.logger:
+			self.logger.info(f"Processing {len(brain_voxels):,} brain voxels in parallel for 4D regressor map")
+		
+		# Process voxels in parallel
+		results = Parallel(n_jobs=n_jobs, verbose=1 if self.logger else 0)(
+			delayed(_process_regressor_voxel)(voxel_coord, delay_maps, time_delays_seconds, shifted_signals) 
+			for voxel_coord in brain_voxels
+		)
+		
+		# Assemble results
+		voxel_count = 0
+		
+		for i, j, k, signal in results:
+			if signal is not None:
+				regressor_4d[i, j, k, :] = signal
+				voxel_count += 1
+		
+		return voxel_count
 
 	def create_cvr_figure(self, cvr_nii_path, participant, task, space, probe_container=None):
 		"""
@@ -1390,3 +1505,89 @@ class OutputGenerator:
 			self.logger.info(f"Created CVR map figure at {fig_path}")
 		
 		return fig_path
+
+	def _fill_regressor_4d_sequential(self, regressor_4d, brain_mask, x, y, z, delay_maps, 
+	                                  time_delays_seconds, shifted_signals, total_brain_voxels):
+		"""Sequential processing for 4D regressor map generation"""
+		import numpy as np
+		
+		voxel_count = 0
+		
+		for i in range(x):
+			for j in range(y):
+				for k in range(z):
+					if brain_mask[i, j, k]:
+						# Get optimal delay for this voxel
+						optimal_delay = delay_maps[i, j, k]
+						
+						# Skip if delay is NaN (masked voxel)
+						if np.isnan(optimal_delay):
+							continue
+						
+						# Find the closest delay in our time_delays_seconds array
+						delay_idx = np.argmin(np.abs(time_delays_seconds - optimal_delay))
+						
+						# Extract the corresponding shifted probe signal
+						regressor_4d[i, j, k, :] = shifted_signals[delay_idx, :]
+						
+						voxel_count += 1
+						
+						# Progress logging
+						if self.logger and voxel_count % 20000 == 0:
+							progress = (voxel_count / total_brain_voxels) * 100
+							self.logger.debug(f"Processed {voxel_count:,}/{total_brain_voxels:,} voxels ({progress:.1f}%) for 4D regressor map")
+		
+		return voxel_count
+
+	def _fill_regressor_4d_parallel(self, regressor_4d, brain_mask, x, y, z, delay_maps,
+	                                time_delays_seconds, shifted_signals, total_brain_voxels, n_jobs):
+		"""Parallel processing for 4D regressor map generation with chunked processing"""
+		from joblib import Parallel, delayed
+		import numpy as np
+		
+		# Set matplotlib backend to non-GUI to avoid tkinter issues in parallel processing
+		import matplotlib
+		matplotlib.use('Agg')
+		
+		# Get brain voxel coordinates
+		brain_coords = np.where(brain_mask)
+		brain_voxels = list(zip(brain_coords[0], brain_coords[1], brain_coords[2]))
+		
+		if self.logger:
+			self.logger.info(f"Processing {len(brain_voxels):,} brain voxels in parallel for 4D regressor map using chunked processing")
+		
+		# Calculate optimal chunk size
+		if n_jobs == -1:
+			import multiprocessing
+			actual_n_jobs = multiprocessing.cpu_count()
+		else:
+			actual_n_jobs = n_jobs
+			
+		chunk_size = max(1000, min(5000, len(brain_voxels) // (actual_n_jobs * 4)))
+		
+		if self.logger:
+			self.logger.info(f"Using chunk size: {chunk_size} voxels per chunk for 4D regressor processing")
+		
+		# Split brain voxels into chunks
+		voxel_chunks = [brain_voxels[i:i + chunk_size] for i in range(0, len(brain_voxels), chunk_size)]
+		
+		# Process chunks in parallel using multiprocessing backend for true parallelization
+		chunk_results = Parallel(n_jobs=n_jobs, backend='multiprocessing', verbose=1 if self.logger else 0)(
+			delayed(_process_regressor_voxel_chunk)(chunk, delay_maps, time_delays_seconds, shifted_signals) 
+			for chunk in voxel_chunks
+		)
+		
+		# Flatten results from all chunks
+		results = []
+		for chunk_result in chunk_results:
+			results.extend(chunk_result)
+		
+		# Assemble results
+		voxel_count = 0
+		
+		for i, j, k, signal in results:
+			if signal is not None:
+				regressor_4d[i, j, k, :] = signal
+				voxel_count += 1
+		
+		return voxel_count
