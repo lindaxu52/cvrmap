@@ -1,15 +1,17 @@
-# CVRmap Docker Image
+# CVRmap Docker Image v4.0.3
 # Single-stage build for simplicity
 
 FROM python:3.11-slim
+
+# Build argument for version
+ARG CVRMAP_VERSION=4.0.3
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PIP_TRUSTED_HOST="pypi.org pypi.python.org files.pythonhosted.org" \
-    ARG CVRMAP_VERSION=4.0.2
+    PIP_TRUSTED_HOST="pypi.org pypi.python.org files.pythonhosted.org"
 
 # Create non-root user for security
 RUN groupadd --gid 1000 cvrmap && \
