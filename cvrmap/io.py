@@ -244,11 +244,21 @@ class OutputGenerator:
 		# Add baseline value if available
 		if hasattr(etco2_container, 'baseline') and etco2_container.baseline is not None:
 			baseline_units = etco2_container.units if etco2_container.units and not is_roi_probe else ("BOLD units" if is_roi_probe else "mmHg")
+			
+			# Determine baseline method from config
+			baseline_method = self.config.get('physio', {}).get('baseline_method', 'peakutils')
+			if baseline_method == 'mean':
+				description = "Baseline probe value computed as the mean of the signal"
+				method = "mean"
+			else:
+				description = "Baseline probe value computed using peakutils baseline estimation"
+				method = "peakutils.baseline"
+			
 			sidecar["BaselineValue"] = {
 				"Value": float(etco2_container.baseline),
 				"Units": baseline_units,
-				"Description": "Baseline probe value computed using peakutils baseline estimation",
-				"Method": "peakutils.baseline"
+				"Description": description,
+				"Method": method
 			}
 		
 		with open(json_path, 'w') as f:

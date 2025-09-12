@@ -1,6 +1,9 @@
 physio:
   raw_co2_light_smoothing: 0.06  # seconds
   peak_detection_smoothing: 0.8   # seconds
+  baseline_method: peakutils  # Method for computing probe baseline: 'peakutils' (default) or 'mean'
+                              # peakutils: Uses peakutils to detect baseline from signal troughs (recommended for gas challenge)
+                              # mean: Uses the mean of the entire probe signal (recommended for resting-state)
 
 cross_correlation:
   delay_max: 30.0  # maximum delay for cross-correlation analysis in seconds
@@ -10,7 +13,7 @@ delay:
 
 bold:
   denoising:
-    aroma_correlation_threshold: 0.5  # correlation threshold for AROMA component refinement
+    aroma_correlation_threshold: 0.6  # correlation threshold for AROMA component refinement
   temporal_filtering:
     sigma: 63.0 # sigma for temporal filtering in seconds
   spatial_smoothing:

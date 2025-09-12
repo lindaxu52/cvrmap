@@ -190,6 +190,13 @@ cvrmap /path/to/bids /path/to/output participant \
     --derivatives fmriprep=/path/to/fmriprep \
     --debug-level 1
 
+# Resting-state CVR with mean baseline method
+cvrmap /path/to/bids /path/to/output participant \
+    --participant-label 01 \
+    --task rest \
+    --baseline-method mean \
+    --derivatives fmriprep=/path/to/fmriprep
+
 # With custom configuration
 cvrmap /path/to/bids /path/to/output participant \
     --task gas \
@@ -246,6 +253,7 @@ docker compose run --rm cvrmap \
 | `--config` | Custom configuration | `--config config.yaml` |
 | `--debug-level` | Verbosity (0=info, 1=debug) | `--debug-level 1` |
 | `--n-jobs` | Number of parallel jobs (-1=all CPUs) | `--n-jobs 8` |
+| `--baseline-method` | Probe baseline computation method | `--baseline-method mean` |
 | `--roi-probe` | Enable ROI-based probe mode | `--roi-probe` |
 | `--roi-coordinates` | ROI center coordinates (mm) | `--roi-coordinates 0 -52 26` |
 | `--roi-radius` | ROI radius (mm) | `--roi-radius 6.0` |
@@ -303,7 +311,46 @@ n_jobs: 4
 n_jobs: 1
 ```
 
-## 🧠 ROI-Based Probe Analysis
+## � Baseline Computation Methods
+
+CVRmap supports different methods for computing the probe signal baseline, which is critical for accurate CVR calculations. The baseline represents the resting level of the probe signal around which changes are measured.
+
+### Available Methods
+
+#### 1. PeakUtils Method (Default)
+- **Method**: `peakutils` 
+- **Description**: Uses signal processing to detect baseline from signal troughs
+- **Best for**: Gas challenge tasks with clear CO₂ manipulations
+- **Advantages**: Robust against signal drift and outliers
+- **Usage**: Ideal when probe signal has distinct baseline periods
+
+#### 2. Mean Method
+- **Method**: `mean`
+- **Description**: Computes baseline as the mean of the entire probe signal
+- **Best for**: Resting-state data without gas challenges
+- **Advantages**: Simple and stable for signals fluctuating around a constant baseline
+- **Usage**: Recommended for resting-state CVR analysis
+
+### Configuration
+
+```bash
+# Command line usage
+cvrmap /data/bids /data/output participant --task gas --baseline-method peakutils
+cvrmap /data/bids /data/output participant --task rest --baseline-method mean
+
+# Configuration file
+physio:
+  baseline_method: mean  # or 'peakutils'
+```
+
+### Task-Specific Recommendations
+
+- **Gas challenge tasks** (task-gas, task-breathhold): Use `peakutils` (default)
+- **Resting-state tasks** (task-rest, task-restingstate): Use `mean`
+
+> **⚠️ Important:** CVRmap automatically warns when resting-state tasks are detected with peakutils baseline method, recommending the mean method instead.
+
+## �🧠 ROI-Based Probe Analysis
 
 CVRmap supports ROI-based probe analysis as an alternative to physiological recordings. This feature is useful when physiological data is unavailable or when analyzing specific vascular territories.
 

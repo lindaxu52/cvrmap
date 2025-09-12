@@ -106,10 +106,21 @@ class ROIProbeExtractor:
         # Set probe type to indicate ROI source
         probe_container.probe_type = "roi_probe"
         
-        # Compute baseline for CVR calculations
-        import peakutils
-        probe_baseline_array = peakutils.baseline(probe_signal)
-        probe_container.baseline = np.mean(probe_baseline_array)
+        # Compute baseline for CVR calculations using configured method
+        baseline_method = self.config.get('physio', {}).get('baseline_method', 'peakutils')
+        
+        if baseline_method == 'mean':
+            # Use the mean of the signal as baseline (recommended for resting-state)
+            probe_container.baseline = np.mean(probe_signal)
+            if self.logger:
+                self.logger.debug(f"Computed ROI probe baseline using mean method: {probe_container.baseline:.3f}")
+        else:
+            # Use peakutils to detect baseline from signal troughs (default, recommended for gas challenge)
+            import peakutils
+            probe_baseline_array = peakutils.baseline(probe_signal)
+            probe_container.baseline = np.mean(probe_baseline_array)
+            if self.logger:
+                self.logger.debug(f"Computed ROI probe baseline using peakutils method: {probe_container.baseline:.3f}")
         
         if self.logger:
             n_voxels = np.sum(roi_mask)
@@ -182,10 +193,21 @@ class ROIProbeExtractor:
         
         probe_container.probe_type = "roi_probe"
         
-        # Compute baseline
-        import peakutils
-        probe_baseline_array = peakutils.baseline(probe_signal)
-        probe_container.baseline = np.mean(probe_baseline_array)
+        # Compute baseline using configured method
+        baseline_method = self.config.get('physio', {}).get('baseline_method', 'peakutils')
+        
+        if baseline_method == 'mean':
+            # Use the mean of the signal as baseline (recommended for resting-state)
+            probe_container.baseline = np.mean(probe_signal)
+            if self.logger:
+                self.logger.debug(f"Computed ROI probe baseline using mean method: {probe_container.baseline:.3f}")
+        else:
+            # Use peakutils to detect baseline from signal troughs (default, recommended for gas challenge)
+            import peakutils
+            probe_baseline_array = peakutils.baseline(probe_signal)
+            probe_container.baseline = np.mean(probe_baseline_array)
+            if self.logger:
+                self.logger.debug(f"Computed ROI probe baseline using peakutils method: {probe_container.baseline:.3f}")
         
         if self.logger:
             n_voxels = np.sum(roi_mask)
@@ -258,10 +280,21 @@ class ROIProbeExtractor:
         
         probe_container.probe_type = "roi_probe"
         
-        # Compute baseline
-        import peakutils
-        probe_baseline_array = peakutils.baseline(probe_signal)
-        probe_container.baseline = np.mean(probe_baseline_array)
+        # Compute baseline using configured method
+        baseline_method = self.config.get('physio', {}).get('baseline_method', 'peakutils')
+        
+        if baseline_method == 'mean':
+            # Use the mean of the signal as baseline (recommended for resting-state)
+            probe_container.baseline = np.mean(probe_signal)
+            if self.logger:
+                self.logger.debug(f"Computed ROI probe baseline using mean method: {probe_container.baseline:.3f}")
+        else:
+            # Use peakutils to detect baseline from signal troughs (default, recommended for gas challenge)
+            import peakutils
+            probe_baseline_array = peakutils.baseline(probe_signal)
+            probe_container.baseline = np.mean(probe_baseline_array)
+            if self.logger:
+                self.logger.debug(f"Computed ROI probe baseline using peakutils method: {probe_container.baseline:.3f}")
         
         if self.logger:
             n_voxels = np.sum(roi_mask)

@@ -45,6 +45,10 @@ def main():
     parser.add_argument('--n-jobs', type=int, default=-1,
                        help='Number of parallel jobs for voxel processing. -1 uses all available CPUs, 1 disables parallelization (default: -1)')
     
+    # Baseline computation method option
+    parser.add_argument('--baseline-method', type=str, choices=['peakutils', 'mean'], default=None,
+                       help='Method for computing probe baseline: "peakutils" (default, detects baseline from signal troughs) or "mean" (uses signal mean). Recommended: "mean" for resting-state, "peakutils" for gas challenge tasks.')
+    
     # ROI probe options
     parser.add_argument('--roi-probe', action='store_true', help='Enable ROI-based probe instead of physiological recordings')
     parser.add_argument('--roi-coordinates', nargs=3, type=float, metavar=('X', 'Y', 'Z'), 
@@ -99,6 +103,19 @@ def main():
     
     # Add parallel processing configuration
     config['n_jobs'] = args.n_jobs
+    
+    # Add baseline method configuration
+    if args.baseline_method:
+        if 'physio' not in config:
+            config['physio'] = {}
+        config['physio']['baseline_method'] = args.baseline_method
+        logger.info(f"Baseline method set to: {args.baseline_method}")
+    
+    # Add task-specific recommendations for baseline method
+    if args.task and args.task.lower() == 'restingstate' or args.task.lower() == 'resting-state' or args.task.lower() == 'rest':
+        current_baseline_method = config.get('physio', {}).get('baseline_method', 'peakutils')
+        if current_baseline_method == 'peakutils':
+            logger.warning("WARNING: Task appears to be resting-state data. Consider using --baseline-method mean instead of peakutils for better baseline estimation in resting-state data without gas challenge.")
     
     # Handle ROI probe command line arguments
     if args.roi_probe:
