@@ -108,7 +108,7 @@ class CVRReportGenerator:
         subject_label = self.participant_id
         task = self.task
         spaces = kwargs.get('space', 'MNI152NLin2009cAsym')
-        version = '4.0.1'  # TODO: get from package metadata
+        version = '4.0.2'  # TODO: get from package metadata
         global_delay = kwargs.get('global_delay', 0.0)
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
@@ -589,7 +589,7 @@ class CVRReportGenerator:
                 <p class="section-subtitle">Quantitative analysis of delay and CVR map distributions</p>
             </div>
             <div class="section-content">
-                {f'''
+                {('''
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-bottom: 2rem;">
                     <!-- Delay Statistics -->
                     <div class="summary-card">
@@ -671,7 +671,7 @@ class CVRReportGenerator:
                         ) if histogram_stats.get('cvr_stats') else "<p style='color: #666; font-style: italic;'>CVR statistics not available</p>"}
                     </div>
                 </div>
-                ''' if histogram_stats else ''}
+                ''') if histogram_stats else ''}
                 
                 <!-- Histogram Figures -->
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem;">
