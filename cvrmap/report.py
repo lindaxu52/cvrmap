@@ -689,9 +689,9 @@ class CVRReportGenerator:
                                 f"<strong>Range:</strong> [{histogram_stats['cvr_stats']['min']:.4f}, {histogram_stats['cvr_stats']['max']:.4f}] {'arbitrary units' if roi_probe_enabled else '%BOLD/mmHg'}<br>" +
                                 f"<strong>IQR:</strong> [{histogram_stats['cvr_stats']['q25']:.4f}, {histogram_stats['cvr_stats']['q75']:.4f}] {'arbitrary units' if roi_probe_enabled else "%BOLD/mmHg'}" +
                             "</div>" +
-                        "</div>" if histogram_stats.get('cvr_stats') else "<p style='color: #666; font-style: italic;'>CVR statistics not available</p>"
-                    </div>
-                </div> if histogram_stats else ''}
+                        "</div>" if histogram_stats.get('cvr_stats') else 
+							"'<p style='color: #666; font-style: italic;'>CVR statistics not available</p>'</div>" + 
+                "</div>" if histogram_stats else ''}
                 
                 <!-- Histogram Figures -->
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem;">
