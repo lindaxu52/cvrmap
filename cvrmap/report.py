@@ -660,9 +660,173 @@ class CVRReportGenerator:
                                 f"<strong>IQR:</strong> [{histogram_stats['delay_stats']['q25']:.2f}, {histogram_stats['delay_stats']['q75']:.2f}] seconds" +
                            "</div>" + 
                         "</div>" if histogram_stats.get('delay_stats') else 
-				            "'<p style='color: #666; font-style: italic;'>Delay statistics not available</p>'</div>" if histogram_stats else ''}
-				</div>
-			</div>
+				            "'<p style='color: #666; font-style: italic;'>Delay statistics not available</p>'</div>" +
+					"</div>" + 
+					
+					"<!-- CVR Statistics -->" +
+                    "<div class='summary-card'>" +
+                        "<h4><i class='fas fa-brain'></i> CVR Statistics</h4>" +
+                        "<div style='margin-top: 1rem;'>" +
+                            "<div style='display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;'>" +
+                                "<div style='text-align: center; padding: 0.75rem; background: #d4edda; border-radius: 6px;'>" +
+                                    f"<div style='font-size: 1.2em; font-weight: bold; color: #155724;'>{histogram_stats['cvr_stats']['mean']:.4f}</div>" +
+                                    "<div style='font-size: 0.85em; color: #666;'>Mean CVR</div>" +
+                                "</div>" +
+                                "<div style='text-align: center; padding: 0.75rem; background: #f8f9fa; border-radius: 6px;'>" +
+                                    f"<div style='font-size: 1.2em; font-weight: bold; color: #6c757d;'>{histogram_stats['cvr_stats']['std']:.4f}</div>" +
+                                    "<div style='font-size: 0.85em; color: #666;'>Standard Dev</div>" +
+                                "</div>" +
+                                "<div style='text-align: center; padding: 0.75rem; background: #fff3cd; border-radius: 6px;'>" +
+                                    f"<div style='font-size: 1.2em; font-weight: bold; color: #856404;'>{histogram_stats['cvr_stats']['median']:.4f}</div>" +
+                                    "<div style='font-size: 0.85em; color: #666;'>Median</div>" +
+                                "</div>" +
+                                "<div style='text-align: center; padding: 0.75rem; background: #e8f4f8; border-radius: 6px;'>" +
+                                    f"<div style='font-size: 1.2em; font-weight: bold; color: #17a2b8;'>{histogram_stats['cvr_stats']['n_voxels']:,}</div>" +
+                                    "<div style='font-size: 0.85em; color: #666;'>Brain Voxels</div>" +
+                                "</div>" +
+                            "</div>" +
+                            "<div style='margin-top: 1rem; padding: 0.75rem; background: #f8f9fa; border-radius: 6px; font-size: 0.9em;'>" +
+                                f"<strong>Range:</strong> [{histogram_stats['cvr_stats']['min']:.4f}, {histogram_stats['cvr_stats']['max']:.4f}] {"arbitrary units" if roi_probe_enabled else "%BOLD/mmHg"}<br>" +
+                                f"<strong>IQR:</strong> [{histogram_stats['cvr_stats']['q25']:.4f}, {histogram_stats['cvr_stats']['q75']:.4f}] {"arbitrary units" if roi_probe_enabled else "%BOLD/mmHg"}" +
+                            "</div>" +
+                        "</div>" if histogram_stats.get('cvr_stats') else "<p style='color: #666; font-style: italic;'>CVR statistics not available</p>")
+                    </div>
+                </div> if histogram_stats else ''}
+                
+                <!-- Histogram Figures -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem;">
+                    {f'''
+                    <div class="figure-container">
+                        <img src="figures/{delay_histogram_figure}" alt="Delay Distribution Histogram" />
+                        <div class="figure-caption">
+                            Distribution of hemodynamic delays across all brain voxels. The histogram shows the 
+                            frequency of different delay values, with vertical lines indicating the mean (red) and 
+                            median (orange) delays. Statistics box provides summary measures of the distribution.
+                        </div>
+                    </div>
+                    ''' if delay_histogram_exists else ''}
+                    
+                    {f'''
+                    <div class="figure-container">
+                        <img src="figures/{cvr_histogram_figure}" alt="CVR Distribution Histogram" />
+                        <div class="figure-caption">
+                            Distribution of cerebrovascular reactivity (CVR) values across all brain voxels. 
+                            The histogram illustrates the range and frequency of CVR responses, with summary 
+                            statistics showing the central tendency and variability of vascular reactivity.
+                        </div>
+                    </div>
+                    ''' if cvr_histogram_exists else ''}
+                </div>
+                
+                <div style="margin-top: 2rem; padding: 1rem; background: #e8f4f8; border-radius: 6px; border-left: 4px solid #17a2b8;">
+                    <strong>Interpretation Notes:</strong>
+                    <ul style="margin-top: 0.5rem; margin-bottom: 0; padding-left: 1.5rem;">
+                        <li><strong>Delay values</strong> represent the optimal temporal shift between {"ROI probe" if roi_probe_enabled else "ETCO₂"} and BOLD signals, reflecting hemodynamic response timing</li>
+                        <li><strong>CVR values</strong> quantify vascular reactivity {"in arbitrary units relative to ROI probe signal changes" if roi_probe_enabled else "as %BOLD signal change per mmHg CO₂ change"}</li>
+                        <li><strong>Normal ranges</strong> vary by brain region, age, and individual physiology</li>
+                        <li><strong>Outlier values</strong> may indicate data quality issues or pathological conditions</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+        
+        <!-- References Section -->
+        <section id="references" class="section">
+            <div class="section-header">
+                <h2 class="section-title">References & Software Information</h2>
+                <p class="section-subtitle">Citation information and source code repository</p>
+            </div>
+            <div class="section-content">
+                <div class="summary-card" style="margin-bottom: 2rem;">
+                    <h4><i class="fab fa-github"></i> Source Code Repository</h4>
+                    <p style="margin-top: 1rem;">
+                        <strong>CVRmap Toolbox:</strong> 
+                        <a href="https://github.com/ln2t/cvrmap" target="_blank" style="color: #0366d6; text-decoration: none;">
+                            https://github.com/ln2t/cvrmap
+                        </a>
+                    </p>
+                    <p style="color: #666; font-size: 0.9em; margin-top: 0.5rem;">
+                        Complete cerebrovascular reactivity mapping post-processing BIDS toolbox
+                    </p>
+                </div>
+                
+                <div class="summary-card">
+                    <h4><i class="fas fa-file-alt"></i> Scientific Publication</h4>
+                    <div style="margin-top: 1rem; padding: 1rem; background: #f8f9fa; border-radius: 6px; border-left: 4px solid #28a745;">
+                        <p style="font-weight: bold; margin-bottom: 0.5rem;">
+                            CVRmap—a complete cerebrovascular reactivity mapping post-processing BIDS toolbox
+                        </p>
+                        <p style="margin-bottom: 0.5rem;">
+                            <strong>Authors:</strong> Rovai, A., Lolli, V., Trotta, N. et al.
+                        </p>
+                        <p style="margin-bottom: 0.5rem;">
+                            <strong>Journal:</strong> Scientific Reports 14, 7252 (2024)
+                        </p>
+                        <p style="margin-bottom: 0.5rem;">
+                            <strong>Published:</strong> 27 March 2024
+                        </p>
+                        <p style="margin-bottom: 1rem;">
+                            <strong>DOI:</strong> 
+                            <a href="https://doi.org/10.1038/s41598-024-57572-3" target="_blank" style="color: #0366d6; text-decoration: none;">
+                                https://doi.org/10.1038/s41598-024-57572-3
+                            </a>
+                        </p>
+                        <div style="background: #e8f4f8; padding: 0.75rem; border-radius: 4px; font-family: monospace; font-size: 0.85em;">
+                            <strong>Citation:</strong><br>
+                            Rovai, A., Lolli, V., Trotta, N. et al. CVRmap—a complete cerebrovascular reactivity mapping post-processing BIDS toolbox. <em>Sci Rep</em> <strong>14</strong>, 7252 (2024). https://doi.org/10.1038/s41598-024-57572-3
+                        </div>
+                    </div>
+                    
+                    <p style="margin-top: 1.5rem; color: #666; font-size: 0.9em;">
+                        <strong>Please cite this paper when using CVRmap in your research.</strong> 
+                        The publication describes the methodology, validation, and implementation details of the cerebrovascular reactivity mapping pipeline used to generate this report.
+                    </p>
+                </div>
+            </div>
+        </section>
+    </div>
+    
+    <script>
+        // Smooth scrolling for navigation links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {{
+            anchor.addEventListener('click', function (e) {{
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {{
+                    target.scrollIntoView({{
+                        behavior: 'smooth',
+                        block: 'start'
+                    }});
+                }}
+            }});
+        }});
+        
+        // Highlight current section in navigation
+        window.addEventListener('scroll', function() {{
+            const sections = document.querySelectorAll('.section');
+            const navLinks = document.querySelectorAll('.nav-links a');
+            
+            let current = '';
+            sections.forEach(section => {{
+                const sectionTop = section.offsetTop - 100;
+                if (pageYOffset >= sectionTop) {{
+                    current = section.getAttribute('id');
+                }}
+            }});
+            
+            navLinks.forEach(link => {{
+                link.style.backgroundColor = '';
+                if (link.getAttribute('href') === '#' + current) {{
+                    link.style.backgroundColor = 'rgba(255,255,255,0.2)';
+                }}
+            }});
+        }});
+    </script>
+
+
+
+
+			
          </section>  
     </div>
 </body>
