@@ -662,8 +662,10 @@ class CVRReportGenerator:
                         "</div>" if histogram_stats.get('delay_stats') else 
 				            "'<p style='color: #666; font-style: italic;'>Delay statistics not available</p>'</div>" +
                 	"</div>" if histogram_stats else '' }
-				 
-					<!-- CVR Statistics -->
+				</div>
+
+			<div style='display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-bottom: 2rem;'>
+				<!-- CVR Statistics -->
                     {"<div class='summary-card'>" +
                         "<h4><i class='fas fa-brain'></i> CVR Statistics</h4>" +
                         "<div style='margin-top: 1rem;'>" +
@@ -692,6 +694,7 @@ class CVRReportGenerator:
 					 "</div>" if histogram_stats.get('cvr_stats') else 
 							"'<p style='color: #666; font-style: italic;'>CVR statistics not available</p>'</div>" + 
                 	"</div>" if histogram_stats else '' }
+				</div>
                 
                 <!-- Histogram Figures -->
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem;">
