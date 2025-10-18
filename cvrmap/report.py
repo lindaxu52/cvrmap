@@ -662,6 +662,7 @@ class CVRReportGenerator:
                         "</div>" if histogram_stats.get('delay_stats') else 
 				            "'<p style='color: #666; font-style: italic;'>Delay statistics not available</p>'</div>" +
                 	"</div>" if histogram_stats else '' }
+				</div>
 
 					<!-- CVR Statistics -->
                     {"<div class='summary-card'>" +
