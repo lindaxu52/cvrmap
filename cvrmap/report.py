@@ -637,7 +637,7 @@ class CVRReportGenerator:
                     {"<div class='summary-card'>" +
                         "<h4><i class='fas fa-clock'></i> Hemodynamic Delay Statistics</h4>" + 
                         "<div style='margin-top: 1rem;'>" +
-                            "<div style='display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;'>" +
+                            "<div style='display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;'>" + 
                                 "<div style='text-align: center; padding: 0.75rem; background: #e8f4f8; border-radius: 6px;'>" + 
                                     f"<div style='font-size: 1.2em; font-weight: bold; color: #17a2b8;'>{histogram_stats['delay_stats']['mean']:.2f}</div>" + 
                                     "<div style='font-size: 0.85em; color: #666;'>Mean Delay</div>" +
